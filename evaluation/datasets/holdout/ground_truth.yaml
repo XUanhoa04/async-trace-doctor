@@ -1,0 +1,12 @@
+dataset: holdout
+cases:
+  - name: producer-with-no-observed-consumer
+    input: ../../../testdata/holdout/orphan-producer.json
+    brokenLink: false
+    expectedRules: [ATD-COR-001]
+    expectedEdges: []
+  - name: consumer-with-no-observed-producer
+    input: ../../../testdata/holdout/orphan-consumer.jsonl
+    brokenLink: true
+    expectedRules: [ATD-CTX-001, ATD-COR-002]
+    expectedEdges: []

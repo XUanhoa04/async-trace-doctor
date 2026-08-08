@@ -1,0 +1,43 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Unit, golden, and holdout tests
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Evaluation
+        run: go run ./evaluation/cmd/evaluate
+      - name: Compose validation
+        run: docker compose config --quiet
+      - name: Build container
+        run: docker build -t async-trace-doctor:ci .
+      - name: Diff check
+        run: git diff --check
+  live-e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Live Redpanda scenarios
+        shell: pwsh
+        run: ./scripts/live-e2e.ps1 -Scenarios normal,no_inject,no_extract,batch_incomplete
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-e2e-result
+          path: evaluation/results/live.json

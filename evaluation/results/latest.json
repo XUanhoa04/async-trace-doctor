@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-08-08T16:40:03.7692689Z",
+  "rules_semantic_convention": "1.43.0",
+  "unit_golden": {
+    "cases": 4,
+    "broken_link_precision": 1,
+    "broken_link_recall": 1,
+    "broken_link_f1": 1,
+    "violation_recall_by_rule": {
+      "ATD-BAT-001": 1,
+      "ATD-COR-001": 1,
+      "ATD-CTX-001": 1,
+      "ATD-DUP-001": 1
+    },
+    "topology_edge_accuracy": 1,
+    "normal_false_positive_rate": 0,
+    "processing_latency_ms_per_case": 0,
+    "peak_allocated_bytes": 1090728
+  },
+  "holdout": {
+    "cases": 2,
+    "broken_link_precision": 1,
+    "broken_link_recall": 1,
+    "broken_link_f1": 1,
+    "violation_recall_by_rule": {
+      "ATD-COR-001": 1,
+      "ATD-COR-002": 1,
+      "ATD-CTX-001": 1
+    },
+    "topology_edge_accuracy": 1,
+    "normal_false_positive_rate": 0,
+    "processing_latency_ms_per_case": 0,
+    "peak_allocated_bytes": 1148760
+  },
+  "live_docker": {
+    "executed_at": "2026-08-08T16:36:50.5705534Z",
+    "scenarios": [
+      {
+        "audited_spans": 8,
+        "expected_rule_ids": [],
+        "findings": 0,
+        "observed_rule_ids": [],
+        "passed": true,
+        "scenario": "normal"
+      },
+      {
+        "audited_spans": 8,
+        "expected_rule_ids": [
+          "ATD-CTX-001"
+        ],
+        "findings": 4,
+        "observed_rule_ids": [
+          "ATD-CTX-001"
+        ],
+        "passed": true,
+        "scenario": "no_inject"
+      },
+      {
+        "audited_spans": 8,
+        "expected_rule_ids": [
+          "ATD-CTX-001"
+        ],
+        "findings": 4,
+        "observed_rule_ids": [
+          "ATD-CTX-001"
+        ],
+        "passed": true,
+        "scenario": "no_extract"
+      },
+      {
+        "audited_spans": 5,
+        "expected_rule_ids": [
+          "ATD-BAT-001"
+        ],
+        "findings": 1,
+        "observed_rule_ids": [
+          "ATD-BAT-001"
+        ],
+        "passed": true,
+        "scenario": "batch_incomplete"
+      },
+      {
+        "audited_spans": 16,
+        "expected_rule_ids": [
+          "ATD-DUP-001"
+        ],
+        "findings": 4,
+        "observed_rule_ids": [
+          "ATD-DUP-001"
+        ],
+        "passed": true,
+        "scenario": "duplicate"
+      }
+    ],
+    "status": "passed"
+  },
+  "notes": [
+    "Ground truth was loaded by the evaluator only after each audit input was processed.",
+    "Peak allocated bytes is a process-level runtime sample, not a container RSS measurement."
+  ]
+}

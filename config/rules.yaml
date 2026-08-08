@@ -1,0 +1,99 @@
+apiVersion: asynctracedoctor.io/v1alpha1
+semanticConventionVersion: "1.43.0"
+settings:
+  correlationWindow: 5m
+  queueLatencyThreshold: 30s
+  duplicateThreshold: 2
+  failOnSeverity: error
+redactAttributes:
+  - enduser.id
+  - user.email
+  - messaging.message.body
+  - messaging.kafka.message.key
+rules:
+  - id: ATD-SEM-001
+    check: missing_service_name
+    enabled: true
+    severity: error
+    message: Messaging span is missing service.name.
+    suggestedFix: Set OTEL_SERVICE_NAME or service.name on the Resource.
+  - id: ATD-SEM-002
+    check: missing_messaging_system
+    enabled: true
+    severity: error
+    message: Messaging span is missing messaging.system.
+    suggestedFix: Set messaging.system to the canonical broker identifier, such as kafka or rabbitmq.
+  - id: ATD-SEM-003
+    check: missing_destination
+    enabled: true
+    severity: warning
+    message: Messaging operation has no identifiable destination.
+    suggestedFix: Record messaging.destination.name when the destination is known and not anonymous.
+  - id: ATD-SEM-004
+    check: invalid_operation
+    enabled: true
+    severity: error
+    message: messaging.operation.type is missing or invalid.
+    suggestedFix: Use create, send, receive, process, or settle according to the messaging semantic conventions.
+  - id: ATD-SEM-005
+    check: invalid_span_kind
+    enabled: true
+    severity: error
+    message: SpanKind does not match messaging.operation.type.
+    suggestedFix: Use PRODUCER for create, CONSUMER for process, and the convention-defined kind for other operations.
+  - id: ATD-CTX-001
+    check: missing_consumer_context
+    enabled: true
+    severity: error
+    message: Consumer process span has no valid producer span link or parent context.
+    suggestedFix: Inject the message creation context at the producer and extract it into a span link at the consumer.
+    appliesTo:
+      operations: [process]
+  - id: ATD-COR-001
+    check: orphan_producer
+    enabled: true
+    severity: error
+    message: Orphan producer has no correlated consumer in the bounded window.
+    suggestedFix: Verify delivery and context propagation, then widen the window only when broker delay justifies it.
+    appliesTo:
+      operations: [create, send]
+  - id: ATD-COR-002
+    check: orphan_consumer
+    enabled: true
+    severity: error
+    message: Orphan consumer has no correlated producer in the bounded window.
+    suggestedFix: Extract trace context before processing and record a link to the message creation context.
+    appliesTo:
+      operations: [receive, process]
+  - id: ATD-BAT-001
+    check: batch_links_incomplete
+    enabled: true
+    severity: error
+    message: Batch consumer has fewer unique message-context links than its declared message count.
+    suggestedFix: Add one span link per message creation context and attach per-message attributes to each link.
+    appliesTo:
+      operations: [receive, process]
+  - id: ATD-DUP-001
+    check: duplicate_processing
+    enabled: true
+    severity: warning
+    message: Duplicate or retry processing exceeds the configured threshold.
+    suggestedFix: Inspect retry policy and idempotency; preserve messaging.message.id when the broker provides it.
+    appliesTo:
+      operations: [process]
+  - id: ATD-LAT-001
+    check: queue_latency_high
+    enabled: true
+    severity: warning
+    message: Correlated producer-to-consumer queue latency exceeds policy.
+    suggestedFix: Check consumer lag, broker saturation, partitions, prefetch, and backpressure.
+  - id: ATD-TOP-001
+    check: runtime_topology_mismatch
+    enabled: true
+    severity: warning
+    message: Runtime async topology differs from the configured expected topology.
+    suggestedFix: Confirm the deployment and routing configuration, then update expectedEdges through review if the change is intentional.
+topology:
+  # Empty by default: add reviewed edges without embedding benchmark scenarios.
+  # Wildcards are allowed for any field.
+  expectedEdges: []

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "semantic_convention_version": "1.43.0",
+  "generated_at": "0001-01-01T00:00:00Z",
+  "summary": {
+    "audited_spans": 2,
+    "messaging_spans": 2,
+    "violations": 0,
+    "broken_links": 0,
+    "orphan_producers": 0,
+    "orphan_consumers": 0,
+    "context_completeness_ratio": 1,
+    "processing_millis": 0
+  },
+  "findings": [],
+  "topology": [
+    {
+      "producer": "checkout",
+      "system": "kafka",
+      "destination": "orders",
+      "consumer": "fulfillment",
+      "count": 1
+    }
+  ]
+}

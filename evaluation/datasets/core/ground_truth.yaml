@@ -1,0 +1,27 @@
+dataset: core/golden
+cases:
+  - name: normal-linked
+    input: ../../../testdata/core/normal.json
+    normal: true
+    brokenLink: false
+    expectedRules: []
+    expectedEdges:
+      - {producer: checkout, system: kafka, destination: orders, consumer: fulfillment}
+  - name: broken-context
+    input: ../../../testdata/core/broken-context.json
+    brokenLink: true
+    expectedRules: [ATD-CTX-001]
+    expectedEdges:
+      - {producer: checkout, system: rabbitmq, destination: payments, consumer: billing}
+  - name: batch-incomplete
+    input: ../../../testdata/core/batch-incomplete.json
+    brokenLink: false
+    expectedRules: [ATD-BAT-001, ATD-COR-001]
+    expectedEdges:
+      - {producer: batch-producer, system: kafka, destination: events, consumer: batch-consumer}
+  - name: duplicate-processing
+    input: ../../../testdata/core/duplicate.json
+    brokenLink: false
+    expectedRules: [ATD-DUP-001]
+    expectedEdges:
+      - {producer: notifier, system: kafka, destination: notifications, consumer: mailer}

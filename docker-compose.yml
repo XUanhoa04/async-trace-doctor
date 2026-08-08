@@ -1,0 +1,60 @@
+name: async-trace-doctor
+services:
+  redpanda:
+    image: redpandadata/redpanda:v25.2.9
+    command: [redpanda, start, --overprovisioned, --smp, "1", --memory, 512M, --reserve-memory, 0M, --node-id, "0", --check=false, --kafka-addr, PLAINTEXT://0.0.0.0:9092, --advertise-kafka-addr, PLAINTEXT://redpanda:9092]
+    healthcheck:
+      test: [CMD-SHELL, rpk cluster health --exit-when-healthy]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports: ["19092:9092"]
+  async-trace-doctor:
+    build: .
+    command: [serve, --rules, /etc/async-trace-doctor/rules.yaml, --audit-interval, 2s, --state-ttl, 10m, --max-spans, "10000"]
+    ports: ["14317:4317", "14318:4318", "18080:8080"]
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.132.0
+    command: [--config=/etc/otelcol/config.yaml]
+    volumes:
+      - ./docker/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      async-trace-doctor:
+        condition: service_started
+  consumer:
+    build: .
+    entrypoint: [/usr/local/bin/demo-consumer]
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_TOPIC: orders
+      MESSAGE_COUNT: "4"
+      FAULT_MODE: ${ATD_FAULT_MODE:-normal}
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+  producer:
+    build: .
+    entrypoint: [/usr/local/bin/demo-producer]
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_TOPIC: orders
+      MESSAGE_COUNT: "4"
+      FAULT_MODE: ${ATD_FAULT_MODE:-normal}
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes:
+      - ./docker/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports: ["19090:9090"]
+    depends_on:
+      async-trace-doctor:
+        condition: service_started

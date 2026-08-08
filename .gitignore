@@ -1,0 +1,8 @@
+/bin/
+/dist/
+*.exe
+*.out
+.env
+.idea/
+.vscode/
+evaluation/results/live.json
