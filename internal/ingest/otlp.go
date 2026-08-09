@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -73,7 +74,28 @@ func ReadPath(path string, limits Limits, redact []string) ([]model.Span, error)
 			return nil, fmt.Errorf("input exceeds max spans (%d)", limits.MaxSpans)
 		}
 	}
-	return spans, nil
+	return deduplicateSpans(spans)
+}
+
+func deduplicateSpans(spans []model.Span) ([]model.Span, error) {
+	seen := map[string]int{}
+	out := make([]model.Span, 0, len(spans))
+	for _, span := range spans {
+		if span.TraceID == "" || span.SpanID == "" {
+			out = append(out, span)
+			continue
+		}
+		identity := span.TraceID + "/" + span.SpanID
+		if index, ok := seen[identity]; ok {
+			if !reflect.DeepEqual(out[index], span) {
+				return nil, fmt.Errorf("conflicting duplicate span identity %s", identity)
+			}
+			continue
+		}
+		seen[identity] = len(out)
+		out = append(out, span)
+	}
+	return out, nil
 }
 
 func readFile(path string, maxBytes int64, redact []string) ([]model.Span, error) {
@@ -204,9 +226,9 @@ func FromProto(resources []*tracev1.ResourceSpans, redact []string) []model.Span
 				a := attrs(s.GetAttributes(), redacted)
 				links := make([]model.Link, 0, len(s.GetLinks()))
 				for _, l := range s.GetLinks() {
-					links = append(links, model.Link{TraceID: hex.EncodeToString(l.GetTraceId()), SpanID: hex.EncodeToString(l.GetSpanId()), Attributes: attrs(l.GetAttributes(), redacted)})
+					links = append(links, model.Link{TraceID: hex.EncodeToString(l.GetTraceId()), SpanID: hex.EncodeToString(l.GetSpanId()), Attributes: attrs(l.GetAttributes(), redacted), Flags: l.GetFlags(), DroppedAttributesCount: l.GetDroppedAttributesCount()})
 				}
-				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: hex.EncodeToString(s.GetParentSpanId()), Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, Links: links, StatusCode: statusCode(s.GetStatus().GetCode())})
+				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: hex.EncodeToString(s.GetParentSpanId()), Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, ResourceAttributes: resourceAttrs, Links: links, StatusCode: statusCode(s.GetStatus().GetCode()), Flags: s.GetFlags(), DroppedAttributesCount: s.GetDroppedAttributesCount(), DroppedLinksCount: s.GetDroppedLinksCount()})
 			}
 		}
 	}

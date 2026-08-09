@@ -30,11 +30,13 @@ type Config struct {
 }
 
 type Settings struct {
-	CorrelationWindow  Duration `yaml:"correlationWindow"`
-	QueueLatency       Duration `yaml:"queueLatencyThreshold"`
-	ClockSkewTolerance Duration `yaml:"clockSkewTolerance"`
-	DuplicateThreshold int      `yaml:"duplicateThreshold"`
-	FailOnSeverity     string   `yaml:"failOnSeverity"`
+	CorrelationWindow          Duration `yaml:"correlationWindow"`
+	QueueLatency               Duration `yaml:"queueLatencyThreshold"`
+	ClockSkewTolerance         Duration `yaml:"clockSkewTolerance"`
+	DuplicateThreshold         int      `yaml:"duplicateThreshold"`
+	FailOnSeverity             string   `yaml:"failOnSeverity"`
+	InputCompleteness          string   `yaml:"inputCompleteness"`
+	FailOnInsufficientEvidence bool     `yaml:"failOnInsufficientEvidence"`
 }
 
 type Rule struct {
@@ -48,7 +50,11 @@ type Rule struct {
 }
 
 type AppliesTo struct {
-	Operations []string `yaml:"operations"`
+	Operations   []string `yaml:"operations"`
+	Systems      []string `yaml:"systems"`
+	Services     []string `yaml:"services"`
+	Destinations []string `yaml:"destinations"`
+	Environments []string `yaml:"environments"`
 }
 
 type Topology struct {
@@ -57,21 +63,27 @@ type Topology struct {
 	IgnoredEdges  []ExpectedEdge `yaml:"ignoredEdges"`
 }
 type ExpectedEdge struct {
-	Producer          string `yaml:"producer"`
-	System            string `yaml:"system"`
-	Destination       string `yaml:"destination"`
-	Consumer          string `yaml:"consumer"`
-	ConsumerGroup     string `yaml:"consumerGroup,omitempty"`
-	Subscription      string `yaml:"subscription,omitempty"`
-	RequirePerMessage bool   `yaml:"requirePerMessage,omitempty"`
+	Producer             string `yaml:"producer"`
+	System               string `yaml:"system"`
+	Destination          string `yaml:"destination"`
+	Consumer             string `yaml:"consumer"`
+	ConsumerGroup        string `yaml:"consumerGroup,omitempty"`
+	Subscription         string `yaml:"subscription,omitempty"`
+	Environment          string `yaml:"environment,omitempty"`
+	ServiceNamespace     string `yaml:"serviceNamespace,omitempty"`
+	DestinationNamespace string `yaml:"destinationNamespace,omitempty"`
+	BrokerAddress        string `yaml:"brokerAddress,omitempty"`
+	RequirePerMessage    bool   `yaml:"requirePerMessage,omitempty"`
 }
 
 var validChecks = map[string]bool{
 	"missing_service_name": true, "missing_messaging_system": true, "missing_destination": true,
 	"invalid_operation": true, "invalid_span_kind": true, "missing_consumer_context": true,
-	"orphan_producer": true, "orphan_consumer": true, "batch_links_incomplete": true,
+	"invalid_span_identity": true, "invalid_timestamps": true,
+	"invalid_context_reference": true,
+	"orphan_producer":           true, "orphan_consumer": true, "batch_links_incomplete": true,
 	"duplicate_processing": true, "queue_latency_high": true, "clock_skew": true,
-	"runtime_topology_mismatch": true,
+	"runtime_topology_mismatch": true, "unresolved_consumer_context": true,
 }
 var severityRank = map[string]int{"info": 0, "warning": 1, "error": 2, "critical": 3}
 
@@ -113,6 +125,9 @@ func (c Config) Validate() error {
 	}
 	if _, ok := severityRank[c.Settings.FailOnSeverity]; !ok {
 		return fmt.Errorf("invalid failOnSeverity %q", c.Settings.FailOnSeverity)
+	}
+	if c.Settings.InputCompleteness != "" && c.Settings.InputCompleteness != "complete" && c.Settings.InputCompleteness != "unknown" {
+		return fmt.Errorf("inputCompleteness must be complete or unknown")
 	}
 	seen := map[string]bool{}
 	for i, r := range c.Rules {

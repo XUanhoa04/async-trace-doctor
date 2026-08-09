@@ -9,27 +9,45 @@ import (
 )
 
 type Link struct {
-	TraceID    string         `json:"trace_id"`
-	SpanID     string         `json:"span_id"`
-	Attributes map[string]any `json:"attributes,omitempty"`
+	TraceID                string         `json:"trace_id"`
+	SpanID                 string         `json:"span_id"`
+	Attributes             map[string]any `json:"attributes,omitempty"`
+	Flags                  uint32         `json:"flags,omitempty"`
+	DroppedAttributesCount uint32         `json:"dropped_attributes_count,omitempty"`
+}
+
+func (l Link) HasValidContext() bool {
+	return len(l.TraceID) == 32 && len(l.SpanID) == 16 && strings.Trim(l.TraceID, "0") != "" && strings.Trim(l.SpanID, "0") != ""
 }
 
 type Span struct {
-	TraceID      string         `json:"trace_id"`
-	SpanID       string         `json:"span_id"`
-	ParentSpanID string         `json:"parent_span_id,omitempty"`
-	Name         string         `json:"name"`
-	Kind         string         `json:"kind"`
-	Service      string         `json:"service_name,omitempty"`
-	Start        time.Time      `json:"start_time"`
-	End          time.Time      `json:"end_time"`
-	Attributes   map[string]any `json:"attributes,omitempty"`
-	Links        []Link         `json:"links,omitempty"`
-	StatusCode   string         `json:"status_code,omitempty"`
+	TraceID                string         `json:"trace_id"`
+	SpanID                 string         `json:"span_id"`
+	ParentSpanID           string         `json:"parent_span_id,omitempty"`
+	Name                   string         `json:"name"`
+	Kind                   string         `json:"kind"`
+	Service                string         `json:"service_name,omitempty"`
+	Start                  time.Time      `json:"start_time"`
+	End                    time.Time      `json:"end_time"`
+	Attributes             map[string]any `json:"attributes,omitempty"`
+	ResourceAttributes     map[string]any `json:"resource_attributes,omitempty"`
+	Links                  []Link         `json:"links,omitempty"`
+	StatusCode             string         `json:"status_code,omitempty"`
+	Flags                  uint32         `json:"flags,omitempty"`
+	DroppedAttributesCount uint32         `json:"dropped_attributes_count,omitempty"`
+	DroppedLinksCount      uint32         `json:"dropped_links_count,omitempty"`
 }
 
 func (s Span) AttrString(key string) string {
 	v, ok := s.Attributes[key]
+	if !ok {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+
+func (s Span) ResourceAttrString(key string) string {
+	v, ok := s.ResourceAttributes[key]
 	if !ok {
 		return ""
 	}
@@ -67,6 +85,28 @@ func (s Span) ConsumerGroup() string {
 }
 func (s Span) Subscription() string {
 	return s.AttrString("messaging.destination.subscription.name")
+}
+func (s Span) Environment() string {
+	if v := s.ResourceAttrString("deployment.environment.name"); v != "" {
+		return v
+	}
+	return s.ResourceAttrString("deployment.environment")
+}
+func (s Span) ServiceNamespace() string { return s.ResourceAttrString("service.namespace") }
+func (s Span) DestinationNamespace() string {
+	return s.AttrString("messaging.destination.namespace")
+}
+func (s Span) ServerAddress() string { return s.AttrString("server.address") }
+func (s Span) Partition() string     { return s.AttrString("messaging.destination.partition.id") }
+func (s Span) KafkaOffset() string   { return s.AttrString("messaging.kafka.offset") }
+func (s Span) MessageIdentity() (string, string) {
+	if s.MessageID() != "" {
+		return "message_id", s.MessageID()
+	}
+	if strings.EqualFold(s.System(), "kafka") && s.Partition() != "" && s.KafkaOffset() != "" {
+		return "kafka_partition_offset", s.Partition() + "/" + s.KafkaOffset()
+	}
+	return "", ""
 }
 func (s Span) Failed() bool {
 	return strings.EqualFold(s.StatusCode, "ERROR") || s.AttrString("error.type") != ""
@@ -113,19 +153,30 @@ type Finding struct {
 	SpanIDs           []string       `json:"span_ids,omitempty"`
 	CorrelationMethod string         `json:"correlation_method,omitempty"`
 	Confidence        Confidence     `json:"confidence"`
+	EvidenceState     string         `json:"evidence_state"`
 	Evidence          map[string]any `json:"evidence"`
 	Message           string         `json:"message"`
 	SuggestedFix      string         `json:"suggested_fix"`
 }
 
+const (
+	EvidenceSufficient   = "sufficient"
+	EvidenceInsufficient = "insufficient"
+	EvidenceDegraded     = "degraded"
+)
+
 type Edge struct {
-	Producer      string `json:"producer"`
-	System        string `json:"system"`
-	Destination   string `json:"destination"`
-	Consumer      string `json:"consumer"`
-	ConsumerGroup string `json:"consumer_group,omitempty"`
-	Subscription  string `json:"subscription,omitempty"`
-	Count         int    `json:"count"`
+	Producer             string `json:"producer"`
+	System               string `json:"system"`
+	Destination          string `json:"destination"`
+	Consumer             string `json:"consumer"`
+	ConsumerGroup        string `json:"consumer_group,omitempty"`
+	Subscription         string `json:"subscription,omitempty"`
+	Environment          string `json:"environment,omitempty"`
+	ServiceNamespace     string `json:"service_namespace,omitempty"`
+	DestinationNamespace string `json:"destination_namespace,omitempty"`
+	BrokerAddress        string `json:"broker_address,omitempty"`
+	Count                int    `json:"count"`
 }
 
 type Summary struct {
@@ -139,13 +190,28 @@ type Summary struct {
 	ProcessingMillis         int64   `json:"processing_millis"`
 }
 
+type Coverage struct {
+	Status                string   `json:"status"`
+	InputCompleteness     string   `json:"input_completeness"`
+	RetainedSpans         int      `json:"retained_spans,omitempty"`
+	RejectedSpans         uint64   `json:"rejected_spans,omitempty"`
+	DuplicateExports      uint64   `json:"duplicate_exports,omitempty"`
+	ConflictingDuplicates uint64   `json:"conflicting_duplicates,omitempty"`
+	TTLEvictions          uint64   `json:"ttl_evictions,omitempty"`
+	DroppedAttributes     uint64   `json:"dropped_attributes,omitempty"`
+	DroppedLinks          uint64   `json:"dropped_links,omitempty"`
+	Limitations           []string `json:"limitations,omitempty"`
+}
+
 type Report struct {
 	SchemaVersion             string    `json:"schema_version"`
 	SemanticConventionVersion string    `json:"semantic_convention_version"`
 	GeneratedAt               time.Time `json:"generated_at"`
 	Summary                   Summary   `json:"summary"`
+	Coverage                  Coverage  `json:"coverage"`
 	Findings                  []Finding `json:"findings"`
 	Topology                  []Edge    `json:"topology"`
+	QueueLatencySamples       []float64 `json:"-"`
 }
 
 func SortFindings(findings []Finding) {

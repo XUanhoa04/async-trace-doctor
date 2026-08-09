@@ -1,42 +1,51 @@
 # Evaluation
 
-AsyncTraceDoctor keeps three evidence classes separate. Scores are generated from real engine output; no threshold is tuned per scenario and no expected result enters the production audit path.
+AsyncTraceDoctor separates four evidence classes: core regression cases, holdout cases, adversarial semantic cases, and live broker-backed scenarios. Expected answers never enter the production audit path.
 
 ## Method
 
-1. The evaluator reads only the case input path from a dataset manifest.
-2. It parses and audits that OTLP file with `config/rules.yaml`.
-3. After the report is complete, it compares detected rule IDs and topology edges with the remaining ground truth.
-4. It records the artifact in `evaluation/results/latest.json`.
+1. Read a manifest and resolve only its input path.
+2. Parse and audit the OTLP input with the normal config and engine.
+3. After the report is complete, compare its rule set and topology with ground truth.
+4. Record metrics and content provenance.
 
-Core/golden cases exercise normal linking, broken context, an incomplete batch, and duplicate processing. Holdout cases exercise message-ID-free orphan producer/consumer telemetry. Live Docker uses a real one-node Redpanda, instrumented Go producer/consumer, Collector forwarding, and the running OTLP server.
+Current offline datasets contain:
 
-Broken-link precision/recall/F1 treat a consumer `process` finding from the configured missing-context rule as the positive detection. Violation recall is case-level per rule. Topology edge accuracy is aggregate Jaccard accuracy over expected and observed edges. Normal false-positive rate is the fraction of explicitly normal scenarios with any finding.
+- four core cases: normal link, broken context, incomplete batch, duplicate processing;
+- two holdout cases: message-ID-free orphan producer and consumer;
+- three adversarial cases: unresolved valid link, cross-environment identity collision, and RabbitMQ destination-shape compatibility.
 
-Processing latency is average in-process audit time per small fixture. Peak allocated bytes is the maximum Go `runtime.MemStats.Alloc` sample after a case; it is evidence, not container RSS or a load-test maximum. Capacity/TTL unit tests and `async_trace_state_spans` provide bounded-state evidence.
+Live Docker runs a real one-node Redpanda, instrumented Go producer/consumer, an OpenTelemetry Collector, and the OTLP server. It remains an integration test, not a scale or availability test.
 
-## Latest measured result
+## Metrics
 
-Run `go run ./evaluation/cmd/evaluate` to refresh the authoritative JSON. The checked-in result records the exact timestamp and values. On the small deterministic core and holdout sets, current broken-link precision, recall, F1, topology accuracy, and expected-rule recall are all `1.0`; the normal false-positive rate is `0.0`. These figures demonstrate fixture behavior only and must not be generalized to production traffic.
+- Broken-link precision/recall/F1 are case-level for `ATD-CTX-001`.
+- Per-rule precision and recall use the exact expected rule set for each case.
+- Exact finding-set accuracy fails on a missing/unexpected rule or an unexpected finding count.
+- Topology accuracy is aggregate Jaccard accuracy over expected and observed edges.
+- Normal false-positive rate is the fraction of declared-normal cases with any finding.
+- Processing time and allocation are small-fixture process samples, not server throughput or RSS.
 
-The live result is reported separately under `live_docker`. A failed or unavailable Docker run remains visible as such; it is never replaced with a synthetic success.
+Every artifact includes schema version, Git revision, Go version, rules SHA-256, and a content hash over each dataset manifest plus input files. CI writes evaluation to an uploaded artifact and fails if evaluation changes tracked files.
 
 ## Reproduce
 
 ```bash
 go test ./...
 go run ./evaluation/cmd/evaluate
+go test -run '^$' -bench BenchmarkCorrelate -benchmem -count 3 ./internal/correlation
 pwsh ./scripts/live-e2e.ps1
-go run ./evaluation/cmd/evaluate
 ```
 
-The live script validates Compose, builds once, recreates isolated broker state per scenario, queries the actual `/report`, writes `evaluation/results/live.json`, and fails when required findings are absent or normal traffic has findings.
+The live script recreates broker state per scenario, queries the actual `/report`, and fails when required findings are absent or normal traffic has findings.
 
-## Limits of the evidence
+## Limits
 
-- Six offline cases are too small to establish external validity.
-- Fixtures do not measure high-throughput ambiguity, fan-out consumer groups, clock skew, long broker delays, or horizontally distributed state.
-- The Docker E2E proves integration behavior on one local environment, not availability or scale.
-- There is no sustained load/RSS profile yet.
+- Nine offline cases are far too small for external validity.
+- Holdout data is repository-local, not independently collected or blind.
+- No per-span localization score, confidence calibration, ablation, or threshold sweep exists yet.
+- No SDK/instrumentation compatibility matrix or independent real-trace labeling exists yet.
+- Correlation microbenchmarks do not establish sustained receiver throughput, tail latency, RSS, restart recovery, or multi-replica correctness.
+- Live scenarios use deliberate fault injection and one local broker node.
 
-These gaps are why the project is described as an MVP, not production-ready.
+Ratios such as `1.0` must always be read with case counts and exact finding-set accuracy. They are regression evidence for these fixtures only, not production accuracy claims.

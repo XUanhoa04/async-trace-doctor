@@ -18,14 +18,14 @@ func WriteJSON(w io.Writer, report model.Report, pretty bool) error {
 }
 
 func WriteTable(w io.Writer, r model.Report) error {
-	if _, err := fmt.Fprintf(w, "AsyncTraceDoctor: %d spans, %d messaging spans, %d findings, context completeness %.1f%%\n", r.Summary.AuditedSpans, r.Summary.MessagingSpans, r.Summary.Violations, r.Summary.ContextCompletenessRatio*100); err != nil {
+	if _, err := fmt.Fprintf(w, "AsyncTraceDoctor: %d spans, %d messaging spans, %d findings, context completeness %.1f%%, coverage %s\n", r.Summary.AuditedSpans, r.Summary.MessagingSpans, r.Summary.Violations, r.Summary.ContextCompletenessRatio*100, r.Coverage.Status); err != nil {
 		return err
 	}
 	if len(r.Findings) == 0 {
 		_, err := fmt.Fprintln(w, "No policy violations detected.")
 		return err
 	}
-	_, _ = fmt.Fprintln(w, "SEVERITY  RULE          PRODUCER -> CONSUMER                       SYSTEM/DESTINATION       METHOD                 CONF  MESSAGE")
+	_, _ = fmt.Fprintln(w, "SEVERITY  RULE          PRODUCER -> CONSUMER                       SYSTEM/DESTINATION       METHOD                 CONF  EVIDENCE      MESSAGE")
 	for _, f := range r.Findings {
 		consumer := f.ConsumerService
 		if f.ConsumerGroup != "" {
@@ -36,7 +36,8 @@ func WriteTable(w io.Writer, r model.Report) error {
 		}
 		edge := trim(f.ProducerService+" -> "+consumer, 42)
 		dest := trim(f.MessagingSystem+"/"+f.Destination, 24)
-		if _, err := fmt.Fprintf(w, "%-9s %-13s %-42s %-24s %-22s %-5s %s\n", strings.ToUpper(f.Severity), f.RuleID, edge, dest, f.CorrelationMethod, f.Confidence, f.Message); err != nil {
+		method := trim(f.CorrelationMethod, 22)
+		if _, err := fmt.Fprintf(w, "%-9s %-13s %-42s %-24s %-22s %-5s %-13s %s\n", strings.ToUpper(f.Severity), f.RuleID, edge, dest, method, f.Confidence, f.EvidenceState, f.Message); err != nil {
 			return err
 		}
 	}

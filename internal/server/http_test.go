@@ -47,3 +47,10 @@ func TestDecompressedLimit(t *testing.T) {
 		t.Fatal("expected decompressed size error")
 	}
 }
+
+func TestPartialSuccessReportsRejectedSpans(t *testing.T) {
+	response := exportResponse(AddResult{Accepted: 1, Rejected: 2})
+	if response.GetPartialSuccess().GetRejectedSpans() != 2 || response.GetPartialSuccess().GetErrorMessage() == "" {
+		t.Fatalf("missing OTLP partial success: %#v", response)
+	}
+}

@@ -4,9 +4,11 @@ cases:
     input: ../../../testdata/holdout/orphan-producer.json
     brokenLink: false
     expectedRules: [ATD-COR-001]
+    expectedRuleCounts: {ATD-COR-001: 1}
     expectedEdges: []
   - name: consumer-with-no-observed-producer
     input: ../../../testdata/holdout/orphan-consumer.jsonl
     brokenLink: true
     expectedRules: [ATD-CTX-001, ATD-COR-002]
+    expectedRuleCounts: {ATD-CTX-001: 1, ATD-COR-002: 1}
     expectedEdges: []

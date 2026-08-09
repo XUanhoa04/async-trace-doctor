@@ -71,7 +71,7 @@ func main() {
 
 func process(ctx context.Context, m kafka.Message, topic, fault string, batch int) {
 	id := header(m.Headers, "message-id")
-	opts := []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", topic), attribute.String("messaging.operation.type", "process"), attribute.String("messaging.operation.name", "process"), attribute.String("messaging.message.id", id))}
+	opts := []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", topic), attribute.String("messaging.operation.type", "process"), attribute.String("messaging.operation.name", "process"), attribute.String("messaging.message.id", id), attribute.String("messaging.consumer.group.name", "async-trace-doctor-demo"), attribute.String("messaging.destination.partition.id", strconv.Itoa(m.Partition)), attribute.Int64("messaging.kafka.offset", m.Offset))}
 	remote := context.Background()
 	if fault != "no_extract" && fault != "orphan_consumer" {
 		remote = otel.GetTextMapPropagator().Extract(ctx, headerCarrier{headers: m.Headers})
@@ -87,10 +87,10 @@ func processBatch(ctx context.Context, messages []kafka.Message, topic string, i
 	for i, m := range messages {
 		remote := otel.GetTextMapPropagator().Extract(ctx, headerCarrier{headers: m.Headers})
 		if trace.SpanContextFromContext(remote).IsValid() && (!incomplete || i < len(messages)-1) {
-			links = append(links, trace.LinkFromContext(remote))
+			links = append(links, trace.Link{SpanContext: trace.SpanContextFromContext(remote), Attributes: []attribute.KeyValue{attribute.String("messaging.message.id", header(m.Headers, "message-id")), attribute.String("messaging.destination.partition.id", strconv.Itoa(m.Partition)), attribute.Int64("messaging.kafka.offset", m.Offset)}})
 		}
 	}
-	_, span := otel.Tracer("async-trace-doctor-demo").Start(context.Background(), "process batch "+topic, trace.WithSpanKind(trace.SpanKindConsumer), trace.WithLinks(links...), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", topic), attribute.String("messaging.operation.type", "process"), attribute.String("messaging.operation.name", "process"), attribute.Int("messaging.batch.message_count", len(messages))))
+	_, span := otel.Tracer("async-trace-doctor-demo").Start(context.Background(), "process batch "+topic, trace.WithSpanKind(trace.SpanKindConsumer), trace.WithLinks(links...), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", topic), attribute.String("messaging.operation.type", "process"), attribute.String("messaging.operation.name", "process"), attribute.String("messaging.consumer.group.name", "async-trace-doctor-demo"), attribute.Int("messaging.batch.message_count", len(messages))))
 	span.End()
 }
 
@@ -118,7 +118,7 @@ func provider(ctx context.Context, service string) (*tracesdk.TracerProvider, er
 	if err != nil {
 		return nil, err
 	}
-	res, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", service)))
+	res, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", service), attribute.String("service.namespace", "async-trace-doctor-demo"), attribute.String("deployment.environment.name", env("DEPLOYMENT_ENVIRONMENT", "demo"))))
 	if err != nil {
 		return nil, err
 	}

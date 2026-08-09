@@ -1,51 +1,63 @@
 <p align="center">
-  <img src="docs/assets/async-trace-doctor-logo.png" width="190" alt="AsyncTraceDoctor logo">
+  <img src="docs/assets/async-trace-doctor-logo.png" width="120" alt="AsyncTraceDoctor logo">
 </p>
 
 <h1 align="center">AsyncTraceDoctor</h1>
 
 <p align="center">
-  <strong>Make asynchronous traces trustworthy before your APM or AIOps pipeline depends on them.</strong>
+  <strong>Catch broken OpenTelemetry messaging links before they corrupt service maps and RCA.</strong>
   <br>
-  An evidence-first OpenTelemetry quality auditor for Kafka, RabbitMQ, and other event-driven systems.
+  A coverage-aware trace-contract gate for asynchronous systems.
 </p>
 
 <p align="center">
   <img alt="Go 1.25" src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white">
-  <img alt="OpenTelemetry semantic conventions 1.43" src="https://img.shields.io/badge/OpenTelemetry_SemConv-1.43-5A29E4?logo=opentelemetry&logoColor=white">
+  <img alt="OpenTelemetry semantic conventions 1.43" src="https://img.shields.io/badge/OTel_SemConv-1.43-5A29E4?logo=opentelemetry&logoColor=white">
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/License-Apache--2.0-2F6FEB"></a>
-  <img alt="Project status: MVP" src="https://img.shields.io/badge/Status-MVP-F59E0B">
+  <img alt="Project status: pre-production" src="https://img.shields.io/badge/Status-pre--production-F59E0B">
 </p>
 
 <p align="center">
-  <a href="#quick-start-under-five-minutes">Quick start</a> ·
-  <a href="#what-it-audits">Rules</a> ·
-  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
-  <a href="docs/EVALUATION.md">Evaluation</a> ·
-  <a href="docs/QA-GAP-ANALYSIS.md">QA risk register</a>
+  <img src="docs/assets/trace-contract-before-after.svg" width="100%" alt="Broken and verified asynchronous trace contract">
 </p>
 
-AsyncTraceDoctor audits whether an asynchronous trace graph is trustworthy enough for RCA, service maps, and automation. It finds broken propagation and misleading telemetry before those defects become confident—but wrong—operational conclusions.
+AsyncTraceDoctor verifies the telemetry contract between messaging producers and consumers. It checks whether message-creation context, batching links, broker identity, retries, and expected fan-out are represented well enough for downstream service maps and root-cause analysis to be causally trustworthy.
 
-It is deliberately **not** an APM backend. It does not store message payloads, call an LLM, diagnose business incidents, or remediate anything. Your APM explains service performance; AsyncTraceDoctor checks whether the underlying async trace evidence deserves to be trusted.
+It is **not** an APM backend and it does **not** infer business message loss from missing spans. When sampling, export loss, state eviction, or late telemetry makes an absence unsafe to interpret, the report says `insufficient` instead of manufacturing certainty.
 
-## What it audits
+## The failure it catches
 
-| Risk | Evidence checked |
-|---|---|
-| Broken async context | Span links, direct producer parent context, message identity, and bounded fallback correlation |
-| Fan-out delivery gaps | Expected consumer service, consumer group, and subscription per identifiable message |
-| Retry vs duplicate processing | OTLP span status, `error.type`, message identity, consumer group, and time window |
-| Batch trace quality | Declared message count, per-message links, shared creation contexts, and link attributes |
-| Misleading latency | Queue delay thresholds plus explicit negative-latency/clock-skew findings |
-| Runtime topology drift | Expected, denied, and reviewed ignored edges, including DLQ/replay exceptions |
-| Invalid messaging semantics | Service, system, destination, operation type, and SpanKind validation |
+A consumer can finish successfully while its OpenTelemetry `process` span is detached from the producer. APM screens remain green, but the service-map edge disappears and RCA attributes the work to the wrong root.
 
-> **Project status:** tested MVP, not production-ready. Unit, golden, holdout, and reproducible Docker E2E evidence are included; known release blockers are documented rather than hidden.
+```text
+AsyncTraceDoctor: 2 spans, 2 messaging spans, 1 findings,
+context completeness 0.0%, coverage complete
 
-## Quick start (under five minutes)
+ERROR  ATD-CTX-001  checkout -> fraud  kafka/orders
+       identity_candidate  high  sufficient
+       Consumer process span has no message-creation context reference.
+```
 
-Requirements: Go 1.25+ for local use; Docker with Compose for the live demo.
+If the consumer has a valid link whose target span is absent, the result is deliberately different:
+
+```text
+WARNING  ATD-COV-001  -> fraud  kafka/orders
+         unresolved_context_reference  low  insufficient
+         Check sampling, export loss, eviction, and Collector routing first.
+```
+
+## Why this is not another APM
+
+| Existing layer | What it does | What AsyncTraceDoctor checks |
+|---|---|---|
+| Jaeger, Tempo, Elastic, Honeycomb, Datadog APM | Stores, queries, and visualizes the telemetry it receives | Whether async causal relationships in that telemetry satisfy a declared contract |
+| Prometheus/span metrics | Aggregates rates, errors, and latency | Whether those aggregates are based on structurally trustworthy messaging spans |
+| Kafka/RabbitMQ monitoring | Reports broker health, lag, queue depth, or redelivery | Whether application spans preserve creation context across producer/consumer boundaries |
+| OpenTelemetry Collector | Routes and processes telemetry | AsyncTraceDoctor currently receives OTLP beside a Collector; a native connector is the target deployment shape |
+
+## Quick start
+
+Requirements: Go 1.25+.
 
 ```bash
 go build -o bin/async-trace-doctor ./cmd/async-trace-doctor
@@ -53,119 +65,119 @@ go build -o bin/async-trace-doctor ./cmd/async-trace-doctor
   --input testdata/core/broken-context.json \
   --rules config/rules.yaml \
   --json report.json
-echo $? # 2 because an error-severity policy violation was found
 ```
 
-Normal traffic exits `0`; input/runtime errors exit `1`; findings at or above `settings.failOnSeverity` exit `2`.
+Exit codes are stable: `0` pass, `1` input/runtime error, and `2` sufficient-evidence finding at or above `failOnSeverity`. Findings marked `insufficient` do not fail policy unless `failOnInsufficientEvidence: true` is explicitly configured.
 
-To receive OTLP:
+Receive live OTLP:
 
 ```bash
 ./bin/async-trace-doctor serve --rules config/rules.yaml
-curl http://localhost:8080/health
+curl http://localhost:8080/ready
+curl http://localhost:8080/report
 curl http://localhost:8080/metrics
 ```
 
-The server listens on OTLP/gRPC `:4317`, OTLP/HTTP `:4318`, and admin HTTP `:8080`. Its state is bounded by `--max-spans` and `--state-ttl`.
-
-For a live Kafka path:
+Run the broker-backed Kafka demo:
 
 ```bash
 docker compose up --build
-# metrics: http://localhost:18080/metrics
-# latest bounded report: http://localhost:18080/report
+# report:     http://localhost:18080/report
+# metrics:    http://localhost:18080/metrics
 # Prometheus: http://localhost:19090
 ```
 
-The default `ATD_FAULT_MODE=normal`. Supported generic demo modes are `no_inject`, `no_extract`, `no_link`, `orphan_producer`, `orphan_consumer`, `batch_incomplete`, and `duplicate`. These flags alter telemetry behavior only; expected audit answers are never sent to AsyncTraceDoctor.
+Use `ATD_FAULT_MODE=no_inject`, `no_extract`, `no_link`, `batch_incomplete`, or `duplicate` to alter telemetry behavior. Ground-truth answers are never sent to the auditor.
 
-## Input and output
+## What it checks
 
-`audit` accepts a Collector file-exporter OTLP JSON object, JSONL (one export request per line), or a directory of `.json`/`.jsonl` files. OTLP IDs are validated as hexadecimal, as required by the OTLP JSON encoding.
+| Contract risk | Evidence and behavior |
+|---|---|
+| Missing creation context | Span links or direct single-message parent context |
+| Unresolved context | Valid context exists but its target is unavailable; reported as insufficient evidence |
+| Kafka correlation | Message ID, or partition+offset when both sides provide them |
+| RabbitMQ destination shape | Strong links remain valid when consumer destinations add a queue suffix |
+| Batch coverage | Declared count, link contexts, and per-message link attributes |
+| Retry vs duplicate processing | Identity, consumer group/subscription, status/error evidence, and bounded attempt windows |
+| Queue latency and clock skew | Signed producer-end to consumer-start latency |
+| Topology contracts | Expected, denied, ignored, and opt-in per-message fan-out edges |
+| Semantic validity | Service, messaging system, destination, operation type, SpanKind, OTLP identities, and timestamps |
 
-Example input fragment:
+Rules are versioned policy, not a no-code plugin system. Checks are implemented in Go; YAML controls enablement, severity, messages, thresholds, and scopes by operation, system, service, destination, and environment.
 
-```json
-{"traceId":"11111111111111111111111111111111","spanId":"1111111111111111","kind":4,"attributes":[{"key":"messaging.system","value":{"stringValue":"kafka"}}]}
+## Coverage-aware conclusions
+
+Every finding contains an `evidence_state`:
+
+- `sufficient`: the observed span itself proves the contract violation, or a finalized input was explicitly declared complete.
+- `insufficient`: the conclusion depends on missing telemetry whose completeness is unknown.
+- `degraded`: receiver rejection, TTL eviction, or OTLP dropped fields affected the evidence window.
+
+Live windows are always coverage-unknown unless an external mechanism can prove completeness. OTLP partial-success responses expose capacity or conflicting-identity rejection instead of silently acknowledging dropped evidence. Reports include cumulative rejection, duplicate-export, conflict, eviction, and dropped-field counts.
+
+## Correlation order
+
+1. exact span link;
+2. direct producer parent context for a single-message consumer;
+3. message identity (`messaging.message.id`, or Kafka partition+offset);
+4. nearest producer inside an indexed broker route and bounded time window.
+
+Links are causal evidence and are not rejected merely because producer/consumer display destinations differ. Attribute and time fallbacks remain isolated by environment, service namespace, destination namespace, and broker address when both sides provide those fields.
+
+## Support matrix
+
+| Area | Evidence level |
+|---|---|
+| OTLP/HTTP and OTLP/gRPC | Unit-tested receiver and parsing |
+| Kafka | Live Redpanda E2E for propagation, batching, and duplicates; broker identity normalization is partial |
+| RabbitMQ | Semantic fixture coverage for destination shape; **no live RabbitMQ E2E yet** |
+| Other messaging systems | Generic semantic validation only; no production-support claim |
+| Scale | Indexed correlation microbenchmarks; no sustained receiver/RSS/load claim |
+
+## Measured microbenchmarks
+
+On a Ryzen 5 5625U, Windows/amd64, Go 1.26.3:
+
+| Scenario | Input | Observed time | Allocated/op |
+|---|---:|---:|---:|
+| Indexed message identity, 100 routes | 10,000 spans | 28.1–35.7 ms | ~8.1 MiB |
+| One hot route without identity | 1,000 spans | 2.4–2.7 ms | ~0.52 MiB |
+
+These are correlation microbenchmarks, not server throughput or production capacity claims. Reproduce with:
+
+```bash
+go test -run '^$' -bench BenchmarkCorrelate -benchmem -count 3 ./internal/correlation
 ```
-
-Example human output:
-
-```text
-AsyncTraceDoctor: 2 spans, 2 messaging spans, 1 findings, context completeness 0.0%
-SEVERITY  RULE          PRODUCER -> CONSUMER                       SYSTEM/DESTINATION       METHOD                 CONF  MESSAGE
-ERROR     ATD-CTX-001   -> billing                                 rabbitmq/payments        semantic_validation    high  Consumer process span has no valid producer span link or parent context.
-```
-
-The JSON report contains stable schema version `1.0`, summary, findings, and observed topology. Every finding includes relevant services, messaging system/destination, trace/span IDs, method, confidence, safe evidence, and a suggested fix. Trace, span, and message IDs are never Prometheus labels.
-
-## Rules and correlation
-
-[`config/rules.yaml`](config/rules.yaml) is versioned and validated strictly. Each enabled rule declares an ID, implementation check, applicability, severity, explanation, and fix. Global settings define correlation window, queue latency, clock-skew tolerance, duplicate threshold, and policy exit threshold. Reviewed topology policy supports expected, denied, and ignored edges; consumer group and subscription are optional dimensions. Set `requirePerMessage: true` only on an expected edge whose producer spans identify individual messages.
-
-Correlation follows this fixed semantic order:
-
-1. producer span context in a consumer span link;
-2. direct parent/message creation context for a single process span;
-3. matching messaging system, destination, and message ID;
-4. system/destination plus bounded time-window heuristic at low confidence; a declared consumer batch may select multiple nearest producers.
-
-Offline `audit` treats its input as a finalized dataset. The receiver's periodic audit treats state as an open window and uses the maximum span end time as an event-time watermark; it never compares historical span timestamps with the auditor host clock.
-
-```yaml
-topology:
-  expectedEdges:
-    - {producer: checkout, system: kafka, destination: orders, consumer: billing, consumerGroup: billing-v1, requirePerMessage: true}
-    - {producer: checkout, system: kafka, destination: orders, consumer: mailer, consumerGroup: mail-v1, requirePerMessage: true}
-  deniedEdges:
-    - {producer: billing, system: kafka, destination: fraud, consumer: fraud-detect}
-  ignoredEdges:
-    - {producer: "*", system: kafka, destination: orders.dlq, consumer: replayer}
-```
-
-Wildcards match an entire field, not a glob pattern: use `*`, not `*.dlq`. List each DLQ destination explicitly when names differ.
-
-`messaging.message.id` is recommended for a single message but is not mandatory. Its absence never produces an invalid-semantics finding; identity-based correlation is skipped and orphan confidence is downgraded.
-
-The rules target OpenTelemetry Semantic Conventions 1.43.0. Messaging conventions are still marked development, so config version review is intentional. See [OpenTelemetry messaging spans](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/) and the [OTLP specification](https://opentelemetry.io/docs/specs/otlp/).
-
-## Architecture and safety
-
-Module boundaries and data flow are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The server enforces request bytes, retained span count, TTL eviction, timeouts, and low-cardinality metrics. Message payload/body-like attributes are always redacted; additional sensitive attributes are configurable. The container runs as a non-root distroless user.
 
 ## Evaluation
 
-Ground truth lives only under `evaluation/datasets/*` and is opened by the evaluator after audit processing. It is never part of an audit request. Core/golden, holdout, and live Docker results are separate in [`evaluation/results/latest.json`](evaluation/results/latest.json) and explained in [`docs/EVALUATION.md`](docs/EVALUATION.md).
+The evaluator currently separates four core cases, two holdout cases, three adversarial cases, and five live Kafka scenarios. Adversarial coverage includes an unresolved valid link, cross-environment message-ID collision, and RabbitMQ producer/consumer destination-shape differences.
+
+It reports exact finding-set accuracy (rule IDs and expected counts), per-rule precision and recall, topology accuracy, normal false-positive rate, and SHA-256 provenance for rules and datasets. These remain small synthetic datasets and are not production-accuracy claims.
 
 ```bash
 go run ./evaluation/cmd/evaluate
 pwsh ./scripts/live-e2e.ps1
-go run ./evaluation/cmd/evaluate # merge the live artifact
 ```
+
+See [evaluation methodology](docs/EVALUATION.md), [architecture](docs/ARCHITECTURE.md), and the [release-risk register](docs/QA-GAP-ANALYSIS.md).
 
 ## Current limits
 
-- Correlation is in-memory and single-process; there is no durable or horizontally shared state.
-- Low-confidence time matching remains ambiguous under high fan-out or high same-destination throughput and is quadratic in the worst case.
-- Duplicate detection requires `messaging.message.id`, is scoped by consumer group/subscription and time window, and can distinguish retries only when failed attempts carry span status `ERROR` or `error.type`.
-- Queue latency is span-clock based. Negative latency is preserved and reported by `ATD-TIM-001`; it cannot reconstruct true latency while clocks disagree.
-- Expected topology is static config; discovery approval workflows are out of scope.
-- Live event-time windows do not advance during an idle stream, so an unmatched final event remains pending until newer telemetry arrives.
-- This MVP supports traces only and does not parse broker payloads.
+- State is single-process and in-memory; replicas do not share correlation state.
+- Idle streams do not advance the live event-time watermark.
+- Kafka identity support does not yet model cluster metadata, commits, rebalances, or delivery attempts.
+- RabbitMQ redelivery, ack/nack, delivery tag, vhost, and DLQ lifecycle are not normalized.
+- Time fallback is low confidence and remains ambiguous on a dense same-route window.
+- No built-in TLS, authentication, or tenant authorization; deploy behind a trusted Collector/proxy.
+- No sustained load, container RSS, recovery, or multi-replica correctness evidence yet.
 
-The adversarial coverage and remaining release blockers are tracked in [`docs/QA-GAP-ANALYSIS.md`](docs/QA-GAP-ANALYSIS.md). Passing the small bundled evaluator is evidence against regressions in those fixtures, not evidence of production accuracy.
+## Roadmap to production credibility
 
-## Roadmap
+1. OpenTelemetry Collector connector with explicit metric/log temporality.
+2. Kafka and RabbitMQ delivery-lifecycle adapters.
+3. Allowed lateness, stable finding fingerprints, retractions, and shard-safe state.
+4. External compatibility corpus across SDK/instrumentation versions.
+5. Sustained throughput, RSS, recovery, and false-positive benchmarks.
 
-The natural next step is an OpenTelemetry Collector connector that consumes traces and emits audit metrics/findings, followed by idle-watermark handling, indexed/durable correlation, broker-specific identity (partition/offset or delivery ID), streaming report export, and independent scale/load evidence. No upstream contribution has been submitted; [`docs/UPSTREAM_CONTRIBUTION.md`](docs/UPSTREAM_CONTRIBUTION.md) is a proposal only.
-
-## Development
-
-```bash
-gofmt -w .
-go test ./...
-go vet ./...
-docker compose config --quiet
-```
-
-Contributions are welcome under the Apache-2.0 license; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Contributions should add a negative test, evidence semantics, and provenance alongside implementation. See [CONTRIBUTING.md](CONTRIBUTING.md).

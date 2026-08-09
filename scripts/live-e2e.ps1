@@ -39,7 +39,14 @@ try {
   Remove-Item Env:ATD_FAULT_MODE -ErrorAction SilentlyContinue
   docker compose down --volumes --remove-orphans | Out-Null
 }
-$artifact = [ordered]@{ status = if (($results | Where-Object { -not $_.passed }).Count -eq 0) {'passed'} else {'failed'}; executed_at=(Get-Date).ToUniversalTime().ToString('o'); scenarios=$results }
+$artifact = [ordered]@{
+  status = if (($results | Where-Object { -not $_.passed }).Count -eq 0) {'passed'} else {'failed'}
+  executed_at = (Get-Date).ToUniversalTime().ToString('o')
+  git_commit = (git rev-parse HEAD).Trim()
+  git_worktree_dirty = [bool]((git status --porcelain) -join '')
+  rules_sha256 = (Get-FileHash -Algorithm SHA256 'config/rules.yaml').Hash.ToLowerInvariant()
+  scenarios = $results
+}
 New-Item -ItemType Directory -Force -Path 'evaluation/results' | Out-Null
 $artifact | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 'evaluation/results/live.json'
 if ($artifact.status -ne 'passed') { throw 'One or more live E2E scenarios failed. See evaluation/results/live.json.' }

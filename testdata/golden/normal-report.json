@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "semantic_convention_version": "1.43.0",
   "generated_at": "0001-01-01T00:00:00Z",
   "summary": {
@@ -11,6 +11,11 @@
     "orphan_consumers": 0,
     "context_completeness_ratio": 1,
     "processing_millis": 0
+  },
+  "coverage": {
+    "status": "complete",
+    "input_completeness": "complete",
+    "retained_spans": 2
   },
   "findings": [],
   "topology": [

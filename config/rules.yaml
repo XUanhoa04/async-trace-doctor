@@ -6,6 +6,10 @@ settings:
   clockSkewTolerance: 1s
   duplicateThreshold: 2
   failOnSeverity: error
+  # Offline audit inputs are treated as finalized, controlled datasets. Live
+  # receiver windows always remain coverage-unknown regardless of this value.
+  inputCompleteness: complete
+  failOnInsufficientEvidence: false
 redactAttributes:
   - enduser.id
   - user.email
@@ -42,28 +46,54 @@ rules:
     severity: error
     message: SpanKind does not match messaging.operation.type.
     suggestedFix: Use PRODUCER for create, CONSUMER for process, and the convention-defined kind for other operations.
+  - id: ATD-SEM-006
+    check: invalid_span_identity
+    enabled: true
+    severity: error
+    message: Messaging span has an invalid OTLP trace or span identity.
+    suggestedFix: Emit a 16-byte trace ID and 8-byte span ID and reject zero or truncated identifiers at instrumentation boundaries.
+  - id: ATD-SEM-007
+    check: invalid_timestamps
+    enabled: true
+    severity: error
+    message: Messaging span has missing or impossible timestamps.
+    suggestedFix: Record non-zero start/end timestamps and ensure span end does not precede span start.
+  - id: ATD-SEM-008
+    check: invalid_context_reference
+    enabled: true
+    severity: error
+    message: Messaging span contains an invalid link or parent context identity.
+    suggestedFix: Propagate non-zero 16-byte trace IDs and 8-byte span IDs and reject truncated messaging headers.
   - id: ATD-CTX-001
     check: missing_consumer_context
     enabled: true
     severity: error
-    message: Consumer process span has no valid producer span link or parent context.
+    message: Consumer process span carries no message-creation context link or parent reference.
     suggestedFix: Inject the message creation context at the producer and extract it into a span link at the consumer.
     appliesTo:
       operations: [process]
+  - id: ATD-COV-001
+    check: unresolved_consumer_context
+    enabled: true
+    severity: warning
+    message: Consumer carries context that cannot be resolved in the available telemetry window.
+    suggestedFix: Check sampling, export loss, state eviction, and collector routing before declaring propagation broken.
+    appliesTo:
+      operations: [receive, process]
   - id: ATD-COR-001
     check: orphan_producer
     enabled: true
     severity: error
-    message: Orphan producer has no correlated consumer in the bounded window.
-    suggestedFix: Verify delivery and context propagation, then widen the window only when broker delay justifies it.
+    message: Producer has no correlated consumer in the available bounded window.
+    suggestedFix: Verify telemetry coverage before investigating delivery, then widen the window only when broker delay justifies it.
     appliesTo:
       operations: [create, send]
   - id: ATD-COR-002
     check: orphan_consumer
     enabled: true
     severity: error
-    message: Orphan consumer has no correlated producer in the bounded window.
-    suggestedFix: Extract trace context before processing and record a link to the message creation context.
+    message: Consumer has no correlated producer in the available bounded window.
+    suggestedFix: Check telemetry coverage, then verify extraction and the message-creation context link.
     appliesTo:
       operations: [receive, process]
   - id: ATD-BAT-001
@@ -101,9 +131,10 @@ rules:
     message: Runtime async topology differs from the configured expected topology.
     suggestedFix: Confirm the deployment and routing configuration, then update expectedEdges through review if the change is intentional.
 topology:
-  # Empty by default. Core fields accept * wildcards. Consumer group and
-  # subscription are optional match dimensions. requirePerMessage is opt-in
-  # because fan-out requirements cannot be inferred from telemetry alone.
+  # Empty by default. Core fields accept * wildcards. Consumer group,
+  # subscription, environment, namespaces, and brokerAddress are optional
+  # match dimensions. requirePerMessage is opt-in because fan-out requirements
+  # cannot be inferred from telemetry alone.
   expectedEdges: []
   # Explicit deny rules work even when expectedEdges is empty.
   deniedEdges: []

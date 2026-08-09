@@ -100,7 +100,7 @@ func provider(ctx context.Context, service string) (*tracesdk.TracerProvider, er
 	if err != nil {
 		return nil, err
 	}
-	res, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", service)))
+	res, err := resource.New(ctx, resource.WithAttributes(attribute.String("service.name", service), attribute.String("service.namespace", "async-trace-doctor-demo"), attribute.String("deployment.environment.name", env("DEPLOYMENT_ENVIRONMENT", "demo"))))
 	if err != nil {
 		return nil, err
 	}

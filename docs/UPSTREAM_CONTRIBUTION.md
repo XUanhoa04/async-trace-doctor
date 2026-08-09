@@ -18,4 +18,4 @@ Propose a documented Collector configuration that routes traces to an external a
 
 ## Connector or processor direction
 
-A Collector connector could consume traces and emit bounded telemetry-quality metrics. A later processor might annotate spans, but dropping or mutating production telemetry should not be the starting point. Before proposal: benchmark memory/CPU, define multi-tenant isolation, settle temporality/deduplication, review semantic-convention stability, and clarify whether findings are logs, metrics, or a separate export.
+A Collector connector could consume traces and emit bounded telemetry-quality metrics plus structured evidence logs. A later processor might annotate spans, but dropping or mutating production telemetry should not be the starting point. Correlation microbenchmarks and first-seen/active temporality now exist; before proposal, add sustained receiver CPU/RSS evidence, define multi-tenant and shard ownership, specify retractions/restart behavior, review semantic-convention stability, and settle the logs/metrics export contract.

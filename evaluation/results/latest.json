@@ -1,5 +1,6 @@
 {
-  "generated_at": "2026-08-09T05:15:06.2984165Z",
+  "schema_version": "2.0",
+  "generated_at": "2026-08-09T14:52:56.7618408Z",
   "rules_semantic_convention": "1.43.0",
   "unit_golden": {
     "cases": 4,
@@ -12,10 +13,16 @@
       "ATD-CTX-001": 1,
       "ATD-DUP-001": 1
     },
+    "violation_precision_by_rule": {
+      "ATD-BAT-001": 1,
+      "ATD-COR-001": 1,
+      "ATD-CTX-001": 1,
+      "ATD-DUP-001": 1
+    },
     "topology_edge_accuracy": 1,
     "normal_false_positive_rate": 0,
-    "processing_latency_ms_per_case": 0,
-    "peak_allocated_bytes": 1108176
+    "exact_finding_set_accuracy": 1,
+    "non_exact_finding_cases": 0
   },
   "holdout": {
     "cases": 2,
@@ -27,13 +34,44 @@
       "ATD-COR-002": 1,
       "ATD-CTX-001": 1
     },
+    "violation_precision_by_rule": {
+      "ATD-COR-001": 1,
+      "ATD-COR-002": 1,
+      "ATD-CTX-001": 1
+    },
     "topology_edge_accuracy": 1,
     "normal_false_positive_rate": 0,
-    "processing_latency_ms_per_case": 0,
-    "peak_allocated_bytes": 1166600
+    "exact_finding_set_accuracy": 1,
+    "non_exact_finding_cases": 0
+  },
+  "adversarial": {
+    "cases": 3,
+    "broken_link_precision": 1,
+    "broken_link_recall": 1,
+    "broken_link_f1": 1,
+    "violation_recall_by_rule": {
+      "ATD-COR-001": 1,
+      "ATD-COR-002": 1,
+      "ATD-COV-001": 1,
+      "ATD-CTX-001": 1
+    },
+    "violation_precision_by_rule": {
+      "ATD-COR-001": 1,
+      "ATD-COR-002": 1,
+      "ATD-COV-001": 1,
+      "ATD-CTX-001": 1
+    },
+    "topology_edge_accuracy": 1,
+    "normal_false_positive_rate": 0,
+    "exact_finding_set_accuracy": 1,
+    "non_exact_finding_cases": 0
   },
   "live_docker": {
-    "executed_at": "2026-08-08T16:36:50.5705534Z",
+    "executed_at": "2026-08-09T14:49:02.5372796Z",
+    "git_commit": "0c1565bed7f737938cd511bb65bd9d2563cc3db2",
+    "git_worktree_dirty": true,
+    "provenance_status": "stale",
+    "rules_sha256": "c721ba1aa82e73be4503579228ea13befbb569936696847324b782e890b165f1",
     "scenarios": [
       {
         "audited_spans": 8,
@@ -92,10 +130,24 @@
         "scenario": "duplicate"
       }
     ],
-    "status": "passed"
+    "status": "stale"
   },
   "notes": [
     "Ground truth was loaded by the evaluator only after each audit input was processed.",
-    "Peak allocated bytes is a process-level runtime sample, not a container RSS measurement."
-  ]
+    "Scores describe the bundled synthetic cases only; they are not production accuracy claims.",
+    "Live results are marked stale when commit or rules provenance does not match.",
+    "Performance is reported only by the separate reproducible correlation benchmarks."
+  ],
+  "provenance": {
+    "git_commit": "0c1565bed7f737938cd511bb65bd9d2563cc3db2",
+    "git_worktree_dirty": true,
+    "go_version": "go1.26.3",
+    "source_sha256": "94e74120cee0557b0f0ea99faeb5f4b3a27d11e0bdc5eba602b751925a12d1d3",
+    "rules_sha256": "c721ba1aa82e73be4503579228ea13befbb569936696847324b782e890b165f1",
+    "dataset_sha256": {
+      "adversarial": "90fa665516270562aac400837d7af2ad40d7db7a694a10b202520a2c5e3e7ac2",
+      "core": "04d86848468c8e906e9fd1c0d5ad4e513a2affc17f1aa620c41ad95456fc5f30",
+      "holdout": "e2d965f194b1b2ab162ea8f2b1c56d4d001f5098ac0bc1bab20c58ea248dc7b3"
+    }
+  }
 }

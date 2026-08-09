@@ -20,22 +20,27 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Evaluation
-        run: go run ./evaluation/cmd/evaluate
+        run: go run ./evaluation/cmd/evaluate --output "${{ runner.temp }}/evaluation.json"
+      - name: Correlation benchmark smoke
+        run: go test -run '^$' -bench BenchmarkCorrelate -benchtime=1x ./internal/correlation
       - name: Compose validation
         run: docker compose config --quiet
       - name: Build container
         run: docker build -t async-trace-doctor:ci .
       - name: Diff check
-        run: git diff --check
+        run: git diff --check && git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-evaluation
+          path: ${{ runner.temp }}/evaluation.json
   live-e2e:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Live Redpanda scenarios
         shell: pwsh
-        run: ./scripts/live-e2e.ps1 -Scenarios normal,no_inject,no_extract,batch_incomplete
+        run: ./scripts/live-e2e.ps1 -Scenarios normal,no_inject,no_extract,batch_incomplete,duplicate
       - uses: actions/upload-artifact@v4
         if: always()
         with:

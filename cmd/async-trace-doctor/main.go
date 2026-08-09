@@ -90,6 +90,9 @@ func serveCmd() *cobra.Command {
 		if ttl <= 0 || interval <= 0 || maxBytes <= 0 || maxSpans <= 0 {
 			return fmt.Errorf("limits, TTL, and interval must be positive")
 		}
+		if ttl < cfg.Settings.CorrelationWindow.Duration {
+			return fmt.Errorf("state TTL %s must be at least the correlation window %s", ttl, cfg.Settings.CorrelationWindow.Duration)
+		}
 		reg := prometheus.NewRegistry()
 		svc := server.New(cfg, server.Options{HTTPAddress: httpAddr, GRPCAddress: grpcAddr, AdminAddress: adminAddr, MaxRequestBytes: maxBytes, MaxSpans: maxSpans, TTL: ttl, AuditInterval: interval}, reg)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

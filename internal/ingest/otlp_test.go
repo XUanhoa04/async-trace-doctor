@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/XUanhoa04/async-trace-doctor/internal/model"
 )
 
 func TestDecodeCollectorOTLPJSON(t *testing.T) {
@@ -52,5 +54,18 @@ func TestDecodeSpanStatus(t *testing.T) {
 	}
 	if len(spans) != 1 || spans[0].StatusCode != "ERROR" {
 		t.Fatalf("status was not preserved: %#v", spans)
+	}
+}
+
+func TestOfflineInputDeduplicatesAndRejectsConflictingIdentity(t *testing.T) {
+	span := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Name: "one"}
+	got, err := deduplicateSpans([]model.Span{span, span})
+	if err != nil || len(got) != 1 {
+		t.Fatalf("identical duplicate was not removed: %#v, %v", got, err)
+	}
+	conflict := span
+	conflict.Name = "different"
+	if _, err := deduplicateSpans([]model.Span{span, conflict}); err == nil {
+		t.Fatal("conflicting duplicate identity must fail offline audit")
 	}
 }

@@ -51,8 +51,8 @@ func New(cfg config.Config, opts Options, reg *prometheus.Registry) *Service {
 	return &Service{cfg: cfg, engine: rules.Engine{Config: cfg}, store: NewStore(opts.MaxSpans, opts.TTL, m), metrics: m, opts: opts}
 }
 func (s *Service) Export(_ context.Context, req *collectortrace.ExportTraceServiceRequest) (*collectortrace.ExportTraceServiceResponse, error) {
-	s.store.Add(ingest.FromProto(req.ResourceSpans, s.cfg.RedactAttributes))
-	return &collectortrace.ExportTraceServiceResponse{}, nil
+	result := s.store.Add(ingest.FromProto(req.ResourceSpans, s.cfg.RedactAttributes))
+	return exportResponse(result), nil
 }
 func (s *Service) Run(ctx context.Context, reg *prometheus.Registry) error {
 	grpcLis, err := net.Listen("tcp", s.opts.GRPCAddress)
@@ -118,6 +118,7 @@ func (s *Service) audit() {
 		return
 	}
 	r := s.engine.AuditWindow(spans)
+	s.enrichCoverage(&r)
 	s.metrics.Observe(r)
 	s.mu.Lock()
 	s.last = r
@@ -155,8 +156,8 @@ func (s *Service) httpExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed OTLP payload", http.StatusBadRequest)
 		return
 	}
-	s.store.Add(ingest.FromProto(req.ResourceSpans, s.cfg.RedactAttributes))
-	resp := &collectortrace.ExportTraceServiceResponse{}
+	result := s.store.Add(ingest.FromProto(req.ResourceSpans, s.cfg.RedactAttributes))
+	resp := exportResponse(result)
 	if ct == "application/json" {
 		b, _ := protojson.Marshal(resp)
 		w.Header().Set("Content-Type", "application/json")
@@ -197,7 +198,8 @@ func (s *Service) handleReady(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ready", "retained_spans": s.store.Len()})
+	stats := s.store.Stats()
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ready", "retained_spans": s.store.Len(), "rejected_spans": stats.RejectedSpans, "duplicate_exports": stats.DuplicateExports})
 }
 func (s *Service) handleReport(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
@@ -209,4 +211,33 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func exportResponse(result AddResult) *collectortrace.ExportTraceServiceResponse {
+	response := &collectortrace.ExportTraceServiceResponse{}
+	if result.Rejected > 0 {
+		response.PartialSuccess = &collectortrace.ExportTracePartialSuccess{
+			RejectedSpans: int64(result.Rejected),
+			ErrorMessage:  "spans rejected by bounded state admission: capacity, stale data, or conflicting trace/span identity",
+		}
+	}
+	return response
+}
+
+func (s *Service) enrichCoverage(report *model.Report) {
+	stats := s.store.Stats()
+	report.Coverage.RetainedSpans = s.store.Len()
+	report.Coverage.RejectedSpans = stats.RejectedSpans
+	report.Coverage.DuplicateExports = stats.DuplicateExports
+	report.Coverage.ConflictingDuplicates = stats.ConflictingDuplicates
+	report.Coverage.TTLEvictions = stats.TTLEvictions
+	if stats.RejectedSpans > 0 || stats.ConflictingDuplicates > 0 || stats.TTLEvictions > 0 {
+		report.Coverage.Status = "degraded"
+		report.Coverage.Limitations = append(report.Coverage.Limitations, "receiver rejection or state eviction may hide correlation evidence")
+		for i := range report.Findings {
+			if report.Findings[i].EvidenceState == model.EvidenceInsufficient {
+				report.Findings[i].EvidenceState = model.EvidenceDegraded
+			}
+		}
+	}
 }

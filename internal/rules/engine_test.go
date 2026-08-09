@@ -1,7 +1,10 @@
 package rules
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +115,8 @@ func TestBatchCoverageFromSharedProducerContext(t *testing.T) {
 	cfg := testConfig(t)
 	now := time.Now()
 	p := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	p.TraceID = strings.Repeat("a", 32)
+	p.SpanID = strings.Repeat("b", 16)
 	p.Attributes["messaging.batch.message_count"] = 5
 	c := messagingSpan("c", "consumer", "process", now.Add(2*time.Second), now.Add(3*time.Second))
 	c.Attributes["messaging.batch.message_count"] = 5
@@ -197,7 +202,8 @@ func messagingSpan(id, service, operation string, start, end time.Time) model.Sp
 	if operation == "process" {
 		kind = "CONSUMER"
 	}
-	return model.Span{TraceID: id + "-trace", SpanID: id, Name: operation + " orders", Kind: kind, Service: service, Start: start, End: end, Attributes: map[string]any{"messaging.system": "kafka", "messaging.destination.name": "orders", "messaging.operation.type": operation}}
+	sum := sha256.Sum256([]byte(id))
+	return model.Span{TraceID: hex.EncodeToString(sum[:16]), SpanID: hex.EncodeToString(sum[16:24]), Name: operation + " orders", Kind: kind, Service: service, Start: start, End: end, Attributes: map[string]any{"messaging.system": "kafka", "messaging.destination.name": "orders", "messaging.operation.type": operation}}
 }
 
 func processSpan(messageID, spanID, group, status string, start time.Time) model.Span {
@@ -249,5 +255,62 @@ func TestMessageIDIsNotRequired(t *testing.T) {
 		if f.RuleID == "ATD-COR-001" && f.Confidence != "low" {
 			t.Fatalf("expected downgraded confidence, got %s", f.Confidence)
 		}
+	}
+}
+
+func TestUnresolvedValidLinkIsCoverageGapNotBrokenPropagation(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	c := messagingSpan("c", "consumer", "process", now, now.Add(time.Second))
+	c.Links = []model.Link{{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa"}}
+	report := Engine{Config: cfg}.Audit([]model.Span{c})
+	assertNoRule(t, report, "ATD-CTX-001")
+	assertNoRule(t, report, "ATD-COR-002")
+	f := findRule(report, "ATD-COV-001")
+	if f == nil || f.EvidenceState != model.EvidenceInsufficient || report.Summary.BrokenLinks != 0 {
+		t.Fatalf("unresolved link must be explicit insufficient evidence: %#v", report)
+	}
+}
+
+func TestLiveAbsenceFindingDoesNotFailPolicyWithoutCoverage(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	p := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	p.TraceID = strings.Repeat("a", 32)
+	p.SpanID = strings.Repeat("b", 16)
+	watermark := model.Span{TraceID: "later", SpanID: "later", End: p.End.Add(cfg.Settings.CorrelationWindow.Duration)}
+	engine := Engine{Config: cfg}
+	report := engine.AuditWindow([]model.Span{p, watermark})
+	f := findRule(report, "ATD-COR-001")
+	if f == nil || f.EvidenceState != model.EvidenceInsufficient {
+		t.Fatalf("live absence must expose insufficient coverage: %#v", report.Findings)
+	}
+	if engine.ViolatesPolicy(report) {
+		t.Fatal("insufficient-evidence absence finding must not fail policy by default")
+	}
+}
+
+func TestRuleApplicabilityCanScopeBySystemAndEnvironment(t *testing.T) {
+	cfg := testConfig(t)
+	for i := range cfg.Rules {
+		if cfg.Rules[i].ID == "ATD-CTX-001" {
+			cfg.Rules[i].AppliesTo.Systems = []string{"rabbitmq"}
+			cfg.Rules[i].AppliesTo.Environments = []string{"prod"}
+		}
+	}
+	now := time.Now()
+	c := messagingSpan("c", "consumer", "process", now, now.Add(time.Second))
+	c.ResourceAttributes = map[string]any{"deployment.environment.name": "staging"}
+	assertNoRule(t, Engine{Config: cfg}.Audit([]model.Span{c}), "ATD-CTX-001")
+}
+
+func TestInvalidIdentityAndTimestampsAreExplicitFindings(t *testing.T) {
+	cfg := testConfig(t)
+	span := messagingSpan("bad", "producer", "send", time.Time{}, time.Time{})
+	span.TraceID = strings.Repeat("0", 32)
+	span.SpanID = "short"
+	report := Engine{Config: cfg}.Audit([]model.Span{span})
+	if findRule(report, "ATD-SEM-006") == nil || findRule(report, "ATD-SEM-007") == nil {
+		t.Fatalf("invalid telemetry was not surfaced: %#v", report.Findings)
 	}
 }

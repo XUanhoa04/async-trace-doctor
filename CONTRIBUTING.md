@@ -2,12 +2,14 @@
 
 Thanks for improving AsyncTraceDoctor. Keep changes broker-neutral, deterministic, and grounded in a named OpenTelemetry semantic-convention version.
 
+See [CHANGELOG.md](CHANGELOG.md) for the unreleased contract and [docs/QA-GAP-ANALYSIS.md](docs/QA-GAP-ANALYSIS.md) for bounded contribution areas with production impact.
+
 ## Development workflow
 
 1. Open an issue or local design note for semantic changes. Do not encode scenario names, fixture names, ground truth, or expected benchmark output in production packages.
-2. Add rules through the versioned config contract and a generic engine check. Treat `messaging.message.id` as optional.
+2. Add rules through the versioned config contract and a generic engine check. Treat `messaging.message.id` as optional; prefer normalized broker identity when available.
 3. Put golden truth only under `evaluation/datasets`; audit inputs belong under `testdata` and must not contain expected findings.
-4. Add or update unit tests, a normal negative test, and documentation.
+4. Add or update unit tests, a normal negative test, evidence-state behavior, and documentation. Absence-based conclusions must prove coverage or remain `insufficient`.
 5. Run:
 
 ```bash

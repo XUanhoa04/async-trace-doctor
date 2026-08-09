@@ -1,0 +1,21 @@
+dataset: adversarial
+cases:
+  - name: unresolved-valid-link-is-not-broken-propagation
+    input: ../../../testdata/adversarial/unresolved-link.json
+    brokenLink: false
+    expectedRules: [ATD-COV-001]
+    expectedRuleCounts: {ATD-COV-001: 1}
+    expectedEdges: []
+  - name: same-message-id-does-not-cross-environment
+    input: ../../../testdata/adversarial/cross-environment.json
+    brokenLink: true
+    expectedRules: [ATD-CTX-001, ATD-COR-001, ATD-COR-002]
+    expectedRuleCounts: {ATD-CTX-001: 1, ATD-COR-001: 1, ATD-COR-002: 1}
+    expectedEdges: []
+  - name: rabbitmq-producer-consumer-destination-shape
+    input: ../../../testdata/adversarial/rabbitmq-destination-shape.json
+    brokenLink: false
+    expectedRules: []
+    expectedRuleCounts: {}
+    expectedEdges:
+      - {producer: publisher, system: rabbitmq, destination: "events:order.created", consumer: billing}

@@ -1,0 +1,56 @@
+name: Bug report
+description: Report an incorrect finding, missed contract violation, or runtime failure.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach production payloads, credentials, personal data, or unredacted message bodies.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: commit SHA or release tag
+    validations:
+      required: true
+  - type: input
+    id: semconv
+    attributes:
+      label: OpenTelemetry semantic-convention and instrumentation version
+      placeholder: semconv 1.43.0, otel-go-contrib x.y.z
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Audit mode
+      options: [offline JSON/JSONL, OTLP HTTP, OTLP gRPC, Docker demo]
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed finding and evidence state
+      description: Include rule ID, evidence_state, coverage block, and safe trace/span IDs when possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected contract behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Minimal sanitized OTLP reproducer
+      render: json
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: The reproducer contains no credentials, message bodies, or personal/production data.
+          required: true

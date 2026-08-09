@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">AsyncTraceDoctor broken and verified messaging trace comparison</title>
+  <desc id="desc">A producer and consumer appear healthy, but a missing creation-context link makes the trace causally unsafe. AsyncTraceDoctor identifies the missing link and verifies it after repair.</desc>
+  <rect width="1200" height="480" rx="24" fill="#0d1117"/>
+  <text x="44" y="52" fill="#f0f6fc" font-family="system-ui,sans-serif" font-size="24" font-weight="700">The green trace that lies</text>
+  <text x="44" y="82" fill="#8b949e" font-family="system-ui,sans-serif" font-size="16">Both handlers succeeded. Only one trace preserves causality.</text>
+
+  <g transform="translate(44 118)">
+    <rect width="530" height="310" rx="16" fill="#161b22" stroke="#30363d"/>
+    <text x="24" y="38" fill="#ff7b72" font-family="system-ui,sans-serif" font-size="19" font-weight="700">BROKEN CONTRACT</text>
+    <rect x="24" y="76" width="140" height="64" rx="12" fill="#1f6f43"/>
+    <text x="94" y="105" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">checkout</text>
+    <text x="94" y="126" text-anchor="middle" fill="#aff5b4" font-family="system-ui,sans-serif" font-size="12">send orders · OK</text>
+    <rect x="198" y="76" width="120" height="64" rx="12" fill="#1f6feb"/>
+    <text x="258" y="113" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">Kafka</text>
+    <rect x="366" y="76" width="140" height="64" rx="12" fill="#1f6f43"/>
+    <text x="436" y="105" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">fraud</text>
+    <text x="436" y="126" text-anchor="middle" fill="#aff5b4" font-family="system-ui,sans-serif" font-size="12">process · OK</text>
+    <path d="M164 108 H198" stroke="#58a6ff" stroke-width="4"/>
+    <path d="M318 108 H366" stroke="#f85149" stroke-width="4" stroke-dasharray="8 7"/>
+    <circle cx="342" cy="108" r="12" fill="#f85149"/>
+    <text x="342" y="113" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="14" font-weight="700">!</text>
+    <rect x="24" y="174" width="482" height="108" rx="12" fill="#0d1117" stroke="#f85149"/>
+    <text x="42" y="201" fill="#ff7b72" font-family="ui-monospace,monospace" font-size="14">ATD-CTX-001 · sufficient evidence</text>
+    <text x="42" y="228" fill="#c9d1d9" font-family="system-ui,sans-serif" font-size="14">creation-context link: missing</text>
+    <text x="42" y="251" fill="#c9d1d9" font-family="system-ui,sans-serif" font-size="14">impact: checkout → fraud edge is unsafe for RCA</text>
+    <text x="42" y="274" fill="#8b949e" font-family="system-ui,sans-serif" font-size="13">partition=7 · offset=9182 · group=fraud-v1</text>
+  </g>
+
+  <g transform="translate(626 118)">
+    <rect width="530" height="310" rx="16" fill="#161b22" stroke="#30363d"/>
+    <text x="24" y="38" fill="#3fb950" font-family="system-ui,sans-serif" font-size="19" font-weight="700">VERIFIED CONTRACT</text>
+    <rect x="24" y="76" width="140" height="64" rx="12" fill="#1f6f43"/>
+    <text x="94" y="105" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">checkout</text>
+    <text x="94" y="126" text-anchor="middle" fill="#aff5b4" font-family="system-ui,sans-serif" font-size="12">send orders · OK</text>
+    <rect x="198" y="76" width="120" height="64" rx="12" fill="#1f6feb"/>
+    <text x="258" y="113" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">Kafka</text>
+    <rect x="366" y="76" width="140" height="64" rx="12" fill="#1f6f43"/>
+    <text x="436" y="105" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="15" font-weight="600">fraud</text>
+    <text x="436" y="126" text-anchor="middle" fill="#aff5b4" font-family="system-ui,sans-serif" font-size="12">process · OK</text>
+    <path d="M164 108 H198 M318 108 H366" stroke="#3fb950" stroke-width="4"/>
+    <circle cx="342" cy="108" r="12" fill="#238636"/>
+    <path d="M336 108 l4 4 8-10" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="24" y="174" width="482" height="108" rx="12" fill="#0d1117" stroke="#238636"/>
+    <text x="42" y="201" fill="#56d364" font-family="ui-monospace,monospace" font-size="14">contract: verified</text>
+    <text x="42" y="228" fill="#c9d1d9" font-family="system-ui,sans-serif" font-size="14">creation-context link: exact</text>
+    <text x="42" y="251" fill="#c9d1d9" font-family="system-ui,sans-serif" font-size="14">causal edge is safe for service maps and RCA</text>
+    <text x="42" y="274" fill="#8b949e" font-family="system-ui,sans-serif" font-size="13">correlation method: span_link · confidence=high</text>
+  </g>
+</svg>

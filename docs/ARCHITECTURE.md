@@ -1,53 +1,60 @@
 # Architecture
 
-AsyncTraceDoctor has one production pipeline and a deliberately separate evaluator.
+AsyncTraceDoctor currently provides an offline contract gate and a pre-production standalone OTLP receiver. The target production shape is an OpenTelemetry Collector connector; the standalone receiver validates semantics before that integration is proposed upstream.
 
 ```text
 Collector JSON/JSONL ─┐
-OTLP HTTP/gRPC ───────┼─> ingest ─> normalized span metadata ─> correlation ─> rules ─> report/metrics
-                      │                    │                         │
-                      └─> bounded store (max spans + TTL) ──────────┘
+OTLP HTTP/gRPC ───────┼─> ingest ─> normalized span metadata ─> route/context indexes
+                      │                                      │
+                      └─> deduplicating admission store ─────┼─> rules ─> report/metrics
+                                                             │
+                      coverage/drop/eviction state ──────────┘
 
 audit report ──────────────────────────────> evaluator <── ground truth (never audit input)
 ```
 
 ## Boundaries
 
-- `internal/ingest` validates OTLP JSON deviations, decodes protobuf requests, applies redaction, and flattens trace metadata. Byte and span limits are enforced at the edge.
-- `internal/model` is a broker-neutral span, link, finding, topology, and report model.
-- `internal/correlation` performs deterministic, bounded-window correlation. Links and parent context are stronger than attributes; heuristic matches are explicitly low confidence.
-- `internal/rules` maps versioned config checks to semantic validators. Rule IDs, severities, messages, thresholds, applicability, and topology expectations come from YAML. The engine contains no fixture/scenario knowledge.
-- `internal/report` renders a human table or schema-versioned JSON.
-- `internal/server` implements OTLP HTTP/gRPC, bounded state, periodic snapshots, health/readiness, the latest report, and Prometheus metrics.
-- `evaluation/cmd/evaluate` is not imported by production code. It loads an input, completes the audit, and only then compares the report with a separate ground-truth manifest.
+- `internal/ingest` validates OTLP JSON IDs, decodes protobuf, redacts payload-like data, and retains isolation, flags, dropped-field counts, and messaging attributes.
+- `internal/model` defines normalized spans, links, coverage, findings, topology, and schema-versioned reports.
+- `internal/correlation` builds context, route, and message-identity indexes. Exact links/parents outrank attributes; time matching is explicitly low confidence.
+- `internal/rules` maps versioned policy to implemented checks. YAML controls severity, thresholds, messages, and operation/system/service/destination/environment scope; checks still require Go implementation.
+- `internal/server` receives OTLP, deduplicates identical exports, rejects conflicting identities/capacity overflow with OTLP partial-success, audits snapshots, and exposes bounded-label metrics.
+- `evaluation/cmd/evaluate` is separate from production packages and loads ground truth only after audit output exists.
 
 ## Correlation semantics
 
-For every receive/process span, the correlator attempts:
-
 | Priority | Evidence | Confidence | Notes |
 |---|---|---:|---|
-| 1 | Exact linked trace/span context | High | Supports one link per batch message. Missing semantic attributes do not invalidate a real context link. |
-| 2 | Same-trace direct parent producer | High | Valid option for a single-message process span. |
-| 3 | System + destination + message ID | Medium | Used only inside the correlation window. |
-| 4 | System + destination + nearest time | Low | Never presented as proof of propagated context. |
+| 1 | Exact linked trace/span context | High | A causal link is not rejected because display destinations differ. |
+| 2 | Same-trace direct parent producer | High | Valid for a single-message process span. |
+| 3 | Message ID or Kafka partition+offset | Medium | Requires route and isolation compatibility inside the correlation window. |
+| 4 | Indexed route + nearest event time | Low | Recovers a candidate topology; never proves propagated context. |
 
-One consumer may match multiple producers through links or, when batch count is declared but links are missing, through a bounded low-confidence nearest-producer fallback. Producer/consumer match sets feed orphan rules and topology edges. Consumer group and subscription remain part of an observed edge, so independent fan-out paths are not collapsed. A process span is considered context-complete only for a real link or parent; an attribute/heuristic match can recover topology but still produces a broken-context finding.
+A valid link or parent reference is structurally context-complete even when its producer span is unavailable. The engine emits `ATD-COV-001` with `evidence_state=insufficient` instead of calling that situation broken propagation. Missing context means the consumer span itself carries no creation-context reference.
 
-Offline and live window closure are intentionally different. A file/directory audit is finalized: after all input is read, unmatched spans are eligible for orphan checks. A server snapshot is open: the maximum observed span end is its event-time watermark, and only spans older than the correlation window relative to that watermark are eligible. Neither path uses the auditor machine's wall clock to classify historical events.
+RabbitMQ producer and consumer destination strings can differ because a consumer destination may add its queue. Exact links remain valid; attribute fallback accepts only compatible prefix shapes. Fallback correlation refuses cross-environment/service-namespace/destination-namespace/broker-address matches when both values are known.
 
-Fan-out requirements are policy, not something a producer span can reveal. `expectedEdges[].requirePerMessage` opts an individually identifiable producer message into delivery checks for a configured consumer service/group/subscription. `deniedEdges` expresses negative topology. `ignoredEdges` suppresses reviewed exceptional routes such as DLQ and replay paths.
+Batch consumers may correlate multiple exact links. When links are missing and a batch count is declared, the low-confidence route index selects up to that count of nearest producers.
 
-## Bounded state
+## Event time and coverage
 
-The server keeps only normalized trace metadata. `--max-spans` is a hard capacity and `--state-ttl` removes every expired span regardless of arrival order. `/ready` exposes only retained count; `/health` exposes no config or secrets. State size and eviction reason are observable without high-cardinality labels.
+Offline audit is finalized. `settings.inputCompleteness: complete` is an explicit assertion that absence may be interpreted; `unknown` keeps absence findings insufficient.
 
-Periodic audits take a copied snapshot so receivers do not hold the store lock during analysis. Findings can repeat in successive windows and the `_total` metrics therefore count audit observations, not globally deduplicated incidents.
+Live snapshots use maximum observed span end time as a watermark and are always coverage-unknown. They do not compare historical timestamps with the auditor host clock for orphan decisions. Idle streams still require an explicit future idle-watermark policy.
 
-## Privacy and cardinality
+Coverage becomes `degraded` when the receiver rejects spans, state TTL evicts evidence, or OTLP reports dropped links/attributes. Absence-based findings do not fail policy by default while evidence is insufficient.
 
-Message bodies and payload-like attributes are always replaced with `[REDACTED]`. `redactAttributes` adds deployment-specific keys such as user identifiers. The tool never connects to a broker or reads message bodies. Metrics use only rule ID, severity, and bounded eviction reason; trace/span/message/service/destination identifiers never become metric labels.
+## Bounded state and temporality
 
-## Failure behavior
+`--max-spans` is an admission limit. Existing correlation evidence is retained until TTL; excess new spans are rejected and disclosed through OTLP partial-success. `--state-ttl` must be at least the correlation window.
 
-Malformed JSON, invalid ID encoding, invalid YAML fields/checks, exceeded limits, and listen/runtime failures are explicit errors. Offline audit maps these to exit `1`; policy violations map to `2`. The OTLP HTTP receiver returns bounded generic error text and never echoes request data.
+Identical `{trace_id, span_id}` exports are deduplicated. Conflicting content for the same identity is rejected and counted. Audit work happens on a copied snapshot so receivers do not hold the store lock during analysis.
+
+Prometheus violation counters increment once per stable finding fingerprint. `async_trace_active_findings` represents the latest snapshot. Queue-latency histograms observe all non-negative correlations, not only threshold violations.
+
+## Privacy and failure behavior
+
+Message bodies and payload-like attributes are replaced with `[REDACTED]`; deployment-specific keys are configurable. Trace/span/message/service/destination values never become metric labels.
+
+Malformed input, unsupported config, invalid IDs, exceeded offline limits, and listen failures are explicit errors. Offline input/runtime errors exit `1`; sufficient-evidence policy violations exit `2`. Built-in TLS, authentication, tenant authorization, durable state, and multi-replica ownership remain deployment blockers.

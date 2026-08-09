@@ -9,8 +9,8 @@ import (
 
 func TestCorrelationPriority(t *testing.T) {
 	now := time.Now()
-	p := model.Span{TraceID: "a", SpanID: "p", Kind: "PRODUCER", Start: now, End: now.Add(time.Millisecond), Attributes: attrs("send", "m")}
-	c := model.Span{TraceID: "b", SpanID: "c", Kind: "CONSUMER", Start: now.Add(time.Second), End: now.Add(2 * time.Second), Attributes: attrs("process", "m"), Links: []model.Link{{TraceID: "a", SpanID: "p"}}}
+	p := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Kind: "PRODUCER", Start: now, End: now.Add(time.Millisecond), Attributes: attrs("send", "m")}
+	c := model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Kind: "CONSUMER", Start: now.Add(time.Second), End: now.Add(2 * time.Second), Attributes: attrs("process", "m"), Links: []model.Link{{TraceID: p.TraceID, SpanID: p.SpanID}}}
 	r := Correlate([]model.Span{p, c}, time.Minute)
 	if len(r.Correlations) != 1 || r.Correlations[0].Method != "span_link" || r.Correlations[0].Confidence != model.ConfidenceHigh {
 		t.Fatalf("unexpected correlation: %#v", r)
@@ -18,12 +18,12 @@ func TestCorrelationPriority(t *testing.T) {
 }
 func TestParentThenAttributeThenHeuristic(t *testing.T) {
 	now := time.Now()
-	p := model.Span{TraceID: "a", SpanID: "p", Kind: "PRODUCER", Start: now, End: now, Attributes: attrs("send", "m")}
+	p := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Kind: "PRODUCER", Start: now, End: now, Attributes: attrs("send", "m")}
 	tests := []struct {
 		name   string
 		c      model.Span
 		method string
-	}{{"parent", model.Span{TraceID: "a", SpanID: "c", ParentSpanID: "p", Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: attrs("process", "m")}, "parent_context"}, {"attributes", model.Span{TraceID: "b", SpanID: "c", Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: withID(attrs("process", "m"), "id-1")}, "messaging_attributes"}, {"heuristic", model.Span{TraceID: "b", SpanID: "c", Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: attrs("process", "m")}, "time_window_heuristic"}}
+	}{{"parent", model.Span{TraceID: p.TraceID, SpanID: "cccccccccccccccc", ParentSpanID: p.SpanID, Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: attrs("process", "m")}, "parent_context"}, {"attributes", model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: withID(attrs("process", "m"), "id-1")}, "messaging_attributes"}, {"heuristic", model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Kind: "CONSUMER", Start: now.Add(time.Second), Attributes: attrs("process", "m")}, "time_window_heuristic"}}
 	p.Attributes = withID(p.Attributes, "id-1")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,8 +56,8 @@ func TestBatchHeuristicCorrelatesDeclaredProducerCount(t *testing.T) {
 
 func TestSignedLatencyExposesClockSkew(t *testing.T) {
 	now := time.Now()
-	p := model.Span{TraceID: "p", SpanID: "p", Start: now, End: now.Add(10 * time.Second), Attributes: attrs("send", "")}
-	c := model.Span{TraceID: "c", SpanID: "c", Start: now.Add(2 * time.Second), Attributes: attrs("process", ""), Links: []model.Link{{TraceID: "p", SpanID: "p"}}}
+	p := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Start: now, End: now.Add(10 * time.Second), Attributes: attrs("send", "")}
+	c := model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Start: now.Add(2 * time.Second), Attributes: attrs("process", ""), Links: []model.Link{{TraceID: p.TraceID, SpanID: p.SpanID}}}
 	r := Correlate([]model.Span{p, c}, time.Minute)
 	if got := r.Correlations[0].QueueLatency; got != -8*time.Second {
 		t.Fatalf("queue latency = %s, want -8s", got)
@@ -71,6 +71,39 @@ func TestHeuristicDoesNotMatchFutureProducer(t *testing.T) {
 	r := Correlate([]model.Span{c, p}, time.Minute)
 	if len(r.Correlations) != 0 {
 		t.Fatalf("invented correlation to future producer: %#v", r.Correlations)
+	}
+}
+
+func TestRabbitMQStrongLinkAllowsConventionDestinationShape(t *testing.T) {
+	now := time.Now()
+	p := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Start: now, End: now.Add(time.Millisecond), Attributes: map[string]any{"messaging.system": "rabbitmq", "messaging.destination.name": "events:order.created", "messaging.operation.type": "send"}}
+	c := model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Start: now.Add(time.Second), Attributes: map[string]any{"messaging.system": "rabbitmq", "messaging.destination.name": "events:order.created:billing", "messaging.operation.type": "process"}, Links: []model.Link{{TraceID: p.TraceID, SpanID: p.SpanID}}}
+	r := Correlate([]model.Span{p, c}, time.Minute)
+	if len(r.Correlations) != 1 || r.Correlations[0].Method != "span_link" {
+		t.Fatalf("valid RabbitMQ creation-context link was rejected: %#v", r)
+	}
+}
+
+func TestAttributeFallbackDoesNotCrossEnvironment(t *testing.T) {
+	now := time.Now()
+	p := model.Span{TraceID: "p", SpanID: "p", Start: now, End: now, Attributes: withID(attrs("send", ""), "same"), ResourceAttributes: map[string]any{"deployment.environment.name": "prod"}}
+	c := model.Span{TraceID: "c", SpanID: "c", Start: now.Add(time.Second), Attributes: withID(attrs("process", ""), "same"), ResourceAttributes: map[string]any{"deployment.environment.name": "staging"}}
+	if got := Correlate([]model.Span{p, c}, time.Minute); len(got.Correlations) != 0 {
+		t.Fatalf("cross-environment correlation invented: %#v", got.Correlations)
+	}
+}
+
+func TestKafkaPartitionOffsetIdentityWithoutMessageID(t *testing.T) {
+	now := time.Now()
+	p := model.Span{TraceID: "p", SpanID: "p", Start: now, End: now, Attributes: attrs("send", "")}
+	c := model.Span{TraceID: "c", SpanID: "c", Start: now.Add(time.Second), Attributes: attrs("process", "")}
+	for _, span := range []*model.Span{&p, &c} {
+		span.Attributes["messaging.destination.partition.id"] = "7"
+		span.Attributes["messaging.kafka.offset"] = "9182"
+	}
+	r := Correlate([]model.Span{p, c}, time.Minute)
+	if len(r.Correlations) != 1 || r.Correlations[0].Method != "kafka_partition_offset" {
+		t.Fatalf("Kafka broker identity was not used: %#v", r.Correlations)
 	}
 }
 func attrs(op, id string) map[string]any {
