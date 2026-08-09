@@ -9,6 +9,7 @@ import (
 
 	"github.com/XUanhoa04/async-trace-doctor/internal/config"
 	"github.com/XUanhoa04/async-trace-doctor/internal/ingest"
+	"github.com/XUanhoa04/async-trace-doctor/internal/model"
 	"github.com/XUanhoa04/async-trace-doctor/internal/report"
 	"github.com/XUanhoa04/async-trace-doctor/internal/rules"
 )
@@ -35,5 +36,16 @@ func TestNormalJSONGolden(t *testing.T) {
 	}
 	if !bytes.Equal(bytes.TrimSpace(got.Bytes()), bytes.TrimSpace(want)) {
 		t.Fatalf("golden mismatch\n--- got ---\n%s\n--- want ---\n%s", got.String(), want)
+	}
+}
+
+func TestTableShowsConsumerGroupAndSubscription(t *testing.T) {
+	r := model.Report{Summary: model.Summary{AuditedSpans: 2, MessagingSpans: 2, Violations: 1}, Findings: []model.Finding{{RuleID: "ATD-TOP-001", Severity: "warning", ProducerService: "publisher", ConsumerService: "worker", ConsumerGroup: "billing", Subscription: "orders-sub", MessagingSystem: "kafka", Destination: "orders", Confidence: model.ConfidenceHigh, Message: "missing"}}}
+	var got bytes.Buffer
+	if err := report.WriteTable(&got, r); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(got.Bytes(), []byte("worker[billing]{orders-sub}")) {
+		t.Fatalf("consumer identity missing from table:\n%s", got.String())
 	}
 }

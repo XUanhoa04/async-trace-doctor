@@ -43,3 +43,14 @@ func TestInputLimits(t *testing.T) {
 		t.Fatal("expected byte limit error")
 	}
 }
+
+func TestDecodeSpanStatus(t *testing.T) {
+	raw := []byte(`{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"11111111111111111111111111111111","spanId":"1111111111111111","name":"process q","startTimeUnixNano":"1","endTimeUnixNano":"2","status":{"code":2}}]}]}]}`)
+	spans, err := DecodeJSON(raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spans) != 1 || spans[0].StatusCode != "ERROR" {
+		t.Fatalf("status was not preserved: %#v", spans)
+	}
+}

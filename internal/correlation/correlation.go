@@ -2,7 +2,6 @@ package correlation
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"time"
 
@@ -52,36 +51,46 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 			}
 		}
 		if c.MessageID() != "" {
-			best := -1
-			bestDelta := time.Duration(math.MaxInt64)
+			candidates := make([]candidate, 0)
 			for _, pi := range producers {
 				p := spans[pi]
 				if p.MessageID() == c.MessageID() && compatible(p, c) {
 					d := delta(p, c)
-					if d <= window && d < bestDelta {
-						best, bestDelta = pi, d
+					if d <= window {
+						candidates = append(candidates, candidate{index: pi, delta: d})
 					}
 				}
 			}
-			if best >= 0 {
-				add(&res, spans, best, ci, "messaging_attributes", model.ConfidenceMedium)
+			sortCandidates(candidates)
+			if len(candidates) > 0 {
+				add(&res, spans, candidates[0].index, ci, "messaging_attributes", model.ConfidenceMedium)
 				continue
 			}
 		}
-		best := -1
-		bestDelta := time.Duration(math.MaxInt64)
+		candidates := make([]candidate, 0)
 		for _, pi := range producers {
 			p := spans[pi]
-			if !compatible(p, c) {
+			// A context-free heuristic must not invent causality with a producer
+			// that started after the consumer. Exact IDs and links may still expose
+			// clock skew and are handled by the stronger branches above.
+			if !compatible(p, c) || (!p.Start.IsZero() && !c.Start.IsZero() && p.Start.After(c.Start)) {
 				continue
 			}
 			d := delta(p, c)
-			if d <= window && d < bestDelta {
-				best, bestDelta = pi, d
+			if d <= window {
+				candidates = append(candidates, candidate{index: pi, delta: d})
 			}
 		}
-		if best >= 0 {
-			add(&res, spans, best, ci, "time_window_heuristic", model.ConfidenceLow)
+		sortCandidates(candidates)
+		limit := 1
+		if count, ok := c.AttrInt("messaging.batch.message_count"); ok && count > limit {
+			limit = count
+		}
+		if limit > len(candidates) {
+			limit = len(candidates)
+		}
+		for _, candidate := range candidates[:limit] {
+			add(&res, spans, candidate.index, ci, "time_window_heuristic", model.ConfidenceLow)
 		}
 	}
 	return res
@@ -90,15 +99,23 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 func add(r *Result, spans []model.Span, pi, ci int, method string, confidence model.Confidence) {
 	p, c := spans[pi], spans[ci]
 	lat := c.Start.Sub(p.End)
-	if lat < 0 {
-		lat = c.Start.Sub(p.Start)
-		if lat < 0 {
-			lat = 0
-		}
-	}
 	r.Correlations = append(r.Correlations, model.Correlation{ProducerIndex: pi, ConsumerIndex: ci, Producer: model.Ref(p), Consumer: model.Ref(c), Method: method, Confidence: confidence, QueueLatency: lat})
 	r.ProducerMatched[pi] = true
 	r.ConsumerMatched[ci] = true
+}
+
+type candidate struct {
+	index int
+	delta time.Duration
+}
+
+func sortCandidates(candidates []candidate) {
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].delta != candidates[j].delta {
+			return candidates[i].delta < candidates[j].delta
+		}
+		return candidates[i].index < candidates[j].index
+	})
 }
 func compatible(p, c model.Span) bool {
 	return p.System() != "" && p.System() == c.System() && p.Destination() != "" && p.Destination() == c.Destination()

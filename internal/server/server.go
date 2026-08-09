@@ -117,7 +117,7 @@ func (s *Service) audit() {
 	if len(spans) == 0 {
 		return
 	}
-	r := s.engine.Audit(spans)
+	r := s.engine.AuditWindow(spans)
 	s.metrics.Observe(r)
 	s.mu.Lock()
 	s.last = r

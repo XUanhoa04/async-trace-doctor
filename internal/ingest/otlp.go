@@ -206,7 +206,7 @@ func FromProto(resources []*tracev1.ResourceSpans, redact []string) []model.Span
 				for _, l := range s.GetLinks() {
 					links = append(links, model.Link{TraceID: hex.EncodeToString(l.GetTraceId()), SpanID: hex.EncodeToString(l.GetSpanId()), Attributes: attrs(l.GetAttributes(), redacted)})
 				}
-				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: hex.EncodeToString(s.GetParentSpanId()), Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, Links: links})
+				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: hex.EncodeToString(s.GetParentSpanId()), Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, Links: links, StatusCode: statusCode(s.GetStatus().GetCode())})
 			}
 		}
 	}
@@ -272,5 +272,16 @@ func kind(k tracev1.Span_SpanKind) string {
 		return "CONSUMER"
 	default:
 		return "UNSPECIFIED"
+	}
+}
+
+func statusCode(code tracev1.Status_StatusCode) string {
+	switch code {
+	case tracev1.Status_STATUS_CODE_OK:
+		return "OK"
+	case tracev1.Status_STATUS_CODE_ERROR:
+		return "ERROR"
+	default:
+		return "UNSET"
 	}
 }

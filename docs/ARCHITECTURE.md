@@ -32,7 +32,11 @@ For every receive/process span, the correlator attempts:
 | 3 | System + destination + message ID | Medium | Used only inside the correlation window. |
 | 4 | System + destination + nearest time | Low | Never presented as proof of propagated context. |
 
-One consumer may match multiple producers through links. Producer/consumer match sets feed orphan rules and topology edges. A process span is considered context-complete only for a real link or parent; an attribute/heuristic match can recover topology but still produces a broken-context finding.
+One consumer may match multiple producers through links or, when batch count is declared but links are missing, through a bounded low-confidence nearest-producer fallback. Producer/consumer match sets feed orphan rules and topology edges. Consumer group and subscription remain part of an observed edge, so independent fan-out paths are not collapsed. A process span is considered context-complete only for a real link or parent; an attribute/heuristic match can recover topology but still produces a broken-context finding.
+
+Offline and live window closure are intentionally different. A file/directory audit is finalized: after all input is read, unmatched spans are eligible for orphan checks. A server snapshot is open: the maximum observed span end is its event-time watermark, and only spans older than the correlation window relative to that watermark are eligible. Neither path uses the auditor machine's wall clock to classify historical events.
+
+Fan-out requirements are policy, not something a producer span can reveal. `expectedEdges[].requirePerMessage` opts an individually identifiable producer message into delivery checks for a configured consumer service/group/subscription. `deniedEdges` expresses negative topology. `ignoredEdges` suppresses reviewed exceptional routes such as DLQ and replay paths.
 
 ## Bounded state
 

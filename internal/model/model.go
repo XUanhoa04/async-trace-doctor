@@ -25,6 +25,7 @@ type Span struct {
 	End          time.Time      `json:"end_time"`
 	Attributes   map[string]any `json:"attributes,omitempty"`
 	Links        []Link         `json:"links,omitempty"`
+	StatusCode   string         `json:"status_code,omitempty"`
 }
 
 func (s Span) AttrString(key string) string {
@@ -61,8 +62,17 @@ func (s Span) Operation() string   { return strings.ToLower(s.AttrString("messag
 func (s Span) System() string      { return s.AttrString("messaging.system") }
 func (s Span) Destination() string { return s.AttrString("messaging.destination.name") }
 func (s Span) MessageID() string   { return s.AttrString("messaging.message.id") }
-func (s Span) IsProducer() bool    { return s.Operation() == "create" || s.Operation() == "send" }
-func (s Span) IsConsumer() bool    { return s.Operation() == "process" || s.Operation() == "receive" }
+func (s Span) ConsumerGroup() string {
+	return s.AttrString("messaging.consumer.group.name")
+}
+func (s Span) Subscription() string {
+	return s.AttrString("messaging.destination.subscription.name")
+}
+func (s Span) Failed() bool {
+	return strings.EqualFold(s.StatusCode, "ERROR") || s.AttrString("error.type") != ""
+}
+func (s Span) IsProducer() bool { return s.Operation() == "create" || s.Operation() == "send" }
+func (s Span) IsConsumer() bool { return s.Operation() == "process" || s.Operation() == "receive" }
 
 type Confidence string
 
@@ -97,6 +107,8 @@ type Finding struct {
 	ConsumerService   string         `json:"consumer_service,omitempty"`
 	MessagingSystem   string         `json:"messaging_system,omitempty"`
 	Destination       string         `json:"destination,omitempty"`
+	ConsumerGroup     string         `json:"consumer_group,omitempty"`
+	Subscription      string         `json:"subscription,omitempty"`
 	TraceIDs          []string       `json:"trace_ids,omitempty"`
 	SpanIDs           []string       `json:"span_ids,omitempty"`
 	CorrelationMethod string         `json:"correlation_method,omitempty"`
@@ -107,11 +119,13 @@ type Finding struct {
 }
 
 type Edge struct {
-	Producer    string `json:"producer"`
-	System      string `json:"system"`
-	Destination string `json:"destination"`
-	Consumer    string `json:"consumer"`
-	Count       int    `json:"count"`
+	Producer      string `json:"producer"`
+	System        string `json:"system"`
+	Destination   string `json:"destination"`
+	Consumer      string `json:"consumer"`
+	ConsumerGroup string `json:"consumer_group,omitempty"`
+	Subscription  string `json:"subscription,omitempty"`
+	Count         int    `json:"count"`
 }
 
 type Summary struct {

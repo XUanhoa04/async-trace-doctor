@@ -32,6 +32,7 @@ type Config struct {
 type Settings struct {
 	CorrelationWindow  Duration `yaml:"correlationWindow"`
 	QueueLatency       Duration `yaml:"queueLatencyThreshold"`
+	ClockSkewTolerance Duration `yaml:"clockSkewTolerance"`
 	DuplicateThreshold int      `yaml:"duplicateThreshold"`
 	FailOnSeverity     string   `yaml:"failOnSeverity"`
 }
@@ -52,19 +53,25 @@ type AppliesTo struct {
 
 type Topology struct {
 	ExpectedEdges []ExpectedEdge `yaml:"expectedEdges"`
+	DeniedEdges   []ExpectedEdge `yaml:"deniedEdges"`
+	IgnoredEdges  []ExpectedEdge `yaml:"ignoredEdges"`
 }
 type ExpectedEdge struct {
-	Producer    string `yaml:"producer"`
-	System      string `yaml:"system"`
-	Destination string `yaml:"destination"`
-	Consumer    string `yaml:"consumer"`
+	Producer          string `yaml:"producer"`
+	System            string `yaml:"system"`
+	Destination       string `yaml:"destination"`
+	Consumer          string `yaml:"consumer"`
+	ConsumerGroup     string `yaml:"consumerGroup,omitempty"`
+	Subscription      string `yaml:"subscription,omitempty"`
+	RequirePerMessage bool   `yaml:"requirePerMessage,omitempty"`
 }
 
 var validChecks = map[string]bool{
 	"missing_service_name": true, "missing_messaging_system": true, "missing_destination": true,
 	"invalid_operation": true, "invalid_span_kind": true, "missing_consumer_context": true,
 	"orphan_producer": true, "orphan_consumer": true, "batch_links_incomplete": true,
-	"duplicate_processing": true, "queue_latency_high": true, "runtime_topology_mismatch": true,
+	"duplicate_processing": true, "queue_latency_high": true, "clock_skew": true,
+	"runtime_topology_mismatch": true,
 }
 var severityRank = map[string]int{"info": 0, "warning": 1, "error": 2, "critical": 3}
 
@@ -98,6 +105,9 @@ func (c Config) Validate() error {
 	if c.Settings.QueueLatency.Duration <= 0 {
 		return fmt.Errorf("queueLatencyThreshold must be positive")
 	}
+	if c.Settings.ClockSkewTolerance.Duration < 0 {
+		return fmt.Errorf("clockSkewTolerance must not be negative")
+	}
 	if c.Settings.DuplicateThreshold < 1 {
 		return fmt.Errorf("duplicateThreshold must be at least 1")
 	}
@@ -118,6 +128,20 @@ func (c Config) Validate() error {
 		}
 		if r.Message == "" || r.SuggestedFix == "" {
 			return fmt.Errorf("rule %q requires message and suggestedFix", r.ID)
+		}
+	}
+	topologySets := []struct {
+		kind  string
+		edges []ExpectedEdge
+	}{{"expected", c.Topology.ExpectedEdges}, {"denied", c.Topology.DeniedEdges}, {"ignored", c.Topology.IgnoredEdges}}
+	for _, set := range topologySets {
+		for i, edge := range set.edges {
+			if edge.Producer == "" || edge.System == "" || edge.Destination == "" || edge.Consumer == "" {
+				return fmt.Errorf("topology %s edge %d requires producer, system, destination, and consumer", set.kind, i)
+			}
+			if set.kind != "expected" && edge.RequirePerMessage {
+				return fmt.Errorf("topology %s edge %d cannot require per-message delivery", set.kind, i)
+			}
 		}
 	}
 	return nil

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-08T16:40:03.7692689Z",
+  "generated_at": "2026-08-09T05:15:06.2984165Z",
   "rules_semantic_convention": "1.43.0",
   "unit_golden": {
     "cases": 4,
@@ -15,7 +15,7 @@
     "topology_edge_accuracy": 1,
     "normal_false_positive_rate": 0,
     "processing_latency_ms_per_case": 0,
-    "peak_allocated_bytes": 1090728
+    "peak_allocated_bytes": 1108176
   },
   "holdout": {
     "cases": 2,
@@ -30,7 +30,7 @@
     "topology_edge_accuracy": 1,
     "normal_false_positive_rate": 0,
     "processing_latency_ms_per_case": 0,
-    "peak_allocated_bytes": 1148760
+    "peak_allocated_bytes": 1166600
   },
   "live_docker": {
     "executed_at": "2026-08-08T16:36:50.5705534Z",

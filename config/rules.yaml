@@ -3,6 +3,7 @@ semanticConventionVersion: "1.43.0"
 settings:
   correlationWindow: 5m
   queueLatencyThreshold: 30s
+  clockSkewTolerance: 1s
   duplicateThreshold: 2
   failOnSeverity: error
 redactAttributes:
@@ -87,6 +88,12 @@ rules:
     severity: warning
     message: Correlated producer-to-consumer queue latency exceeds policy.
     suggestedFix: Check consumer lag, broker saturation, partitions, prefetch, and backpressure.
+  - id: ATD-TIM-001
+    check: clock_skew
+    enabled: true
+    severity: warning
+    message: Consumer time precedes the correlated producer beyond the configured clock-skew tolerance.
+    suggestedFix: Check NTP/PTP synchronization and host clock health before trusting cross-host latency.
   - id: ATD-TOP-001
     check: runtime_topology_mismatch
     enabled: true
@@ -94,6 +101,11 @@ rules:
     message: Runtime async topology differs from the configured expected topology.
     suggestedFix: Confirm the deployment and routing configuration, then update expectedEdges through review if the change is intentional.
 topology:
-  # Empty by default: add reviewed edges without embedding benchmark scenarios.
-  # Wildcards are allowed for any field.
+  # Empty by default. Core fields accept * wildcards. Consumer group and
+  # subscription are optional match dimensions. requirePerMessage is opt-in
+  # because fan-out requirements cannot be inferred from telemetry alone.
   expectedEdges: []
+  # Explicit deny rules work even when expectedEdges is empty.
+  deniedEdges: []
+  # Use for reviewed exceptional paths such as DLQ/replay traffic.
+  ignoredEdges: []
