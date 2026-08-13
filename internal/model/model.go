@@ -104,7 +104,7 @@ func (s Span) MessageIdentity() (string, string) {
 		return "message_id", s.MessageID()
 	}
 	if strings.EqualFold(s.System(), "kafka") && s.Partition() != "" && s.KafkaOffset() != "" {
-		return "kafka_partition_offset", s.Partition() + "/" + s.KafkaOffset()
+		return MethodKafkaPartOffset, s.Partition() + "/" + s.KafkaOffset()
 	}
 	return "", ""
 }
@@ -215,13 +215,21 @@ type Report struct {
 }
 
 func SortFindings(findings []Finding) {
-	sort.Slice(findings, func(i, j int) bool {
-		if findings[i].RuleID != findings[j].RuleID {
-			return findings[i].RuleID < findings[j].RuleID
-		}
-		if strings.Join(findings[i].SpanIDs, ",") != strings.Join(findings[j].SpanIDs, ",") {
-			return strings.Join(findings[i].SpanIDs, ",") < strings.Join(findings[j].SpanIDs, ",")
-		}
-		return findings[i].Message < findings[j].Message
-	})
+	keys := make([]string, len(findings))
+	for i := range findings {
+		keys[i] = findings[i].RuleID + "\x00" + strings.Join(findings[i].SpanIDs, ",") + "\x00" + findings[i].Message
+	}
+	sort.Sort(findingSorter{findings: findings, keys: keys})
+}
+
+type findingSorter struct {
+	findings []Finding
+	keys     []string
+}
+
+func (s findingSorter) Len() int           { return len(s.findings) }
+func (s findingSorter) Less(i, j int) bool { return s.keys[i] < s.keys[j] }
+func (s findingSorter) Swap(i, j int) {
+	s.findings[i], s.findings[j] = s.findings[j], s.findings[i]
+	s.keys[i], s.keys[j] = s.keys[j], s.keys[i]
 }

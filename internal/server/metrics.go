@@ -2,10 +2,11 @@ package server
 
 import (
 	"fmt"
-	"github.com/XUanhoa04/async-trace-doctor/internal/model"
-	"github.com/prometheus/client_golang/prometheus"
 	"strings"
 	"sync"
+
+	"github.com/XUanhoa04/async-trace-doctor/internal/model"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Metrics struct {
@@ -17,12 +18,15 @@ type Metrics struct {
 	Completeness          prometheus.Gauge
 	QueueLatency          prometheus.Histogram
 	StateSpans            prometheus.Gauge
+	StateBytes            prometheus.Gauge
 	Evictions             *prometheus.CounterVec
 	Rejected              *prometheus.CounterVec
 	DuplicateExports      prometheus.Counter
 	ConflictingDuplicates prometheus.Counter
 	AuditRuns             prometheus.Counter
 	ActiveFindings        *prometheus.GaugeVec
+	RateLimited           *prometheus.CounterVec
+	ConfigReloads         *prometheus.CounterVec
 	mu                    sync.Mutex
 	activeFingerprints    map[string]bool
 }
@@ -37,15 +41,18 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		Completeness:          prometheus.NewGauge(prometheus.GaugeOpts{Name: "async_trace_context_completeness_ratio", Help: "Ratio of consumer spans correlated by link or parent."}),
 		QueueLatency:          prometheus.NewHistogram(prometheus.HistogramOpts{Name: "async_trace_queue_latency_seconds", Help: "Observed correlated producer-to-consumer latency.", Buckets: prometheus.ExponentialBuckets(0.001, 4, 10)}),
 		StateSpans:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "async_trace_state_spans", Help: "Current spans retained in bounded state."}),
+		StateBytes:            prometheus.NewGauge(prometheus.GaugeOpts{Name: "async_trace_state_bytes", Help: "Estimated bytes retained in bounded state."}),
 		Evictions:             prometheus.NewCounterVec(prometheus.CounterOpts{Name: "async_trace_state_evictions_total", Help: "State evictions by reason."}, []string{"reason"}),
 		Rejected:              prometheus.NewCounterVec(prometheus.CounterOpts{Name: "async_trace_ingest_rejected_spans_total", Help: "OTLP spans rejected by bounded reason."}, []string{"reason"}),
 		DuplicateExports:      prometheus.NewCounter(prometheus.CounterOpts{Name: "async_trace_duplicate_exports_total", Help: "Repeated exports of an identical trace/span identity."}),
 		ConflictingDuplicates: prometheus.NewCounter(prometheus.CounterOpts{Name: "async_trace_conflicting_duplicates_total", Help: "Repeated trace/span identities with conflicting content."}),
 		AuditRuns:             prometheus.NewCounter(prometheus.CounterOpts{Name: "async_trace_audit_runs_total", Help: "Completed audit snapshots."}),
 		ActiveFindings:        prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "async_trace_active_findings", Help: "Findings in the latest audit snapshot by rule and severity."}, []string{"rule_id", "severity"}),
+		RateLimited:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "async_trace_rate_limited_total", Help: "Requests rejected by transport rate limiting."}, []string{"transport"}),
+		ConfigReloads:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "async_trace_config_reloads_total", Help: "Configuration reload attempts by status."}, []string{"status"}),
 		activeFingerprints:    map[string]bool{},
 	}
-	reg.MustRegister(m.Audited, m.Violations, m.Broken, m.OrphanProducers, m.OrphanConsumers, m.Completeness, m.QueueLatency, m.StateSpans, m.Evictions, m.Rejected, m.DuplicateExports, m.ConflictingDuplicates, m.AuditRuns, m.ActiveFindings)
+	reg.MustRegister(m.Audited, m.Violations, m.Broken, m.OrphanProducers, m.OrphanConsumers, m.Completeness, m.QueueLatency, m.StateSpans, m.StateBytes, m.Evictions, m.Rejected, m.DuplicateExports, m.ConflictingDuplicates, m.AuditRuns, m.ActiveFindings, m.RateLimited, m.ConfigReloads)
 	return m
 }
 func (m *Metrics) Observe(r model.Report) {

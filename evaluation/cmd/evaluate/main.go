@@ -45,15 +45,33 @@ type scores struct {
 	NonExactRuleCases       int                `json:"non_exact_finding_cases"`
 }
 type output struct {
-	SchemaVersion           string     `json:"schema_version"`
-	GeneratedAt             time.Time  `json:"generated_at"`
-	RulesSemanticConvention string     `json:"rules_semantic_convention"`
-	UnitGolden              scores     `json:"unit_golden"`
-	Holdout                 scores     `json:"holdout"`
-	Adversarial             scores     `json:"adversarial"`
-	LiveDocker              any        `json:"live_docker"`
-	Notes                   []string   `json:"notes"`
-	Provenance              provenance `json:"provenance"`
+	SchemaVersion           string               `json:"schema_version"`
+	GeneratedAt             time.Time            `json:"generated_at"`
+	RulesSemanticConvention string               `json:"rules_semantic_convention"`
+	UnitGolden              scores               `json:"unit_golden"`
+	Holdout                 scores               `json:"holdout"`
+	Adversarial             scores               `json:"adversarial"`
+	LiveDocker              any                  `json:"live_docker"`
+	Notes                   []string             `json:"notes"`
+	Provenance              provenance           `json:"provenance"`
+	SensitivityAnalysis     *sensitivityAnalysis `json:"sensitivity_analysis,omitempty"`
+}
+
+type sensitivityAnalysis struct {
+	CorrelationWindow  []windowResult    `json:"correlation_window"`
+	DuplicateThreshold []thresholdResult `json:"duplicate_threshold"`
+}
+
+type windowResult struct {
+	Window            string  `json:"window"`
+	ExactCaseAccuracy float64 `json:"exact_case_accuracy"`
+	FalsePositiveRate float64 `json:"false_positive_rate"`
+}
+
+type thresholdResult struct {
+	Threshold         int     `json:"threshold"`
+	ExactCaseAccuracy float64 `json:"exact_case_accuracy"`
+	FalsePositiveRate float64 `json:"false_positive_rate"`
 }
 
 type provenance struct {
@@ -68,6 +86,7 @@ type provenance struct {
 func main() {
 	rulesPath := flag.String("rules", "config/rules.yaml", "rules config")
 	outPath := flag.String("output", "evaluation/results/latest.json", "result path")
+	sweep := flag.Bool("sweep", false, "run threshold sensitivity analysis")
 	flag.Parse()
 	cfg, err := config.Load(*rulesPath)
 	must(err)
@@ -87,6 +106,10 @@ func main() {
 		}
 	}
 	o := output{SchemaVersion: "2.0", GeneratedAt: time.Now().UTC(), RulesSemanticConvention: cfg.SemanticConventionVersion, UnitGolden: core, Holdout: holdout, Adversarial: adversarial, LiveDocker: live, Notes: []string{"Ground truth was loaded by the evaluator only after each audit input was processed.", "Scores describe the bundled synthetic cases only; they are not production accuracy claims.", "Live results are marked stale when commit or rules provenance does not match.", "Performance is reported only by the separate reproducible correlation benchmarks."}, Provenance: provenance{GitCommit: currentCommit, GitWorktreeDirty: gitWorktreeDirty(), GoVersion: runtime.Version(), SourceSHA256: sourceHash(), RulesSHA256: currentRulesHash, DatasetSHA256: map[string]string{"core": coreHash, "holdout": holdoutHash, "adversarial": adversarialHash}}}
+	if *sweep {
+		const dataset = "evaluation/datasets/core/ground_truth.yaml"
+		o.SensitivityAnalysis = &sensitivityAnalysis{CorrelationWindow: sweepCorrelationWindow(cfg, dataset), DuplicateThreshold: sweepDuplicateThreshold(cfg, dataset)}
+	}
 	must(os.MkdirAll(filepath.Dir(*outPath), 0755))
 	f, err := os.Create(*outPath)
 	must(err)
@@ -95,6 +118,36 @@ func main() {
 	must(enc.Encode(o))
 	must(f.Close())
 	fmt.Printf("wrote %s\n", *outPath)
+}
+
+func sweepCorrelationWindow(cfg config.Config, path string) []windowResult {
+	windows := []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 30 * time.Minute}
+	out := make([]windowResult, 0, len(windows))
+	for _, window := range windows {
+		candidate := cfg
+		candidate.Settings.CorrelationWindow.Duration = window
+		s, _, err := evaluate(path, candidate)
+		if err != nil {
+			continue
+		}
+		out = append(out, windowResult{Window: window.String(), ExactCaseAccuracy: s.ExactCaseAccuracy, FalsePositiveRate: s.NormalFalsePositiveRate})
+	}
+	return out
+}
+
+func sweepDuplicateThreshold(cfg config.Config, path string) []thresholdResult {
+	thresholds := []int{1, 2, 3, 5, 10}
+	out := make([]thresholdResult, 0, len(thresholds))
+	for _, threshold := range thresholds {
+		candidate := cfg
+		candidate.Settings.DuplicateThreshold = threshold
+		s, _, err := evaluate(path, candidate)
+		if err != nil {
+			continue
+		}
+		out = append(out, thresholdResult{Threshold: threshold, ExactCaseAccuracy: s.ExactCaseAccuracy, FalsePositiveRate: s.NormalFalsePositiveRate})
+	}
+	return out
 }
 func evaluate(path string, cfg config.Config) (scores, string, error) {
 	b, err := os.ReadFile(path)

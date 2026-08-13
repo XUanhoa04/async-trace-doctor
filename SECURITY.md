@@ -2,4 +2,6 @@
 
 Please report suspected vulnerabilities privately through GitHub's security advisory flow when enabled. Do not include real telemetry, credentials, message bodies, or personal data in reports.
 
-The pre-production receiver accepts untrusted OTLP only behind explicit byte, gRPC message, span-admission, TTL, and HTTP timeout limits. Operators should place TLS and authentication at a trusted reverse proxy or Collector; the built-in receiver does not implement authentication or tenant authorization. Configure `redactAttributes` for local sensitive keys.
+The receiver enforces request-byte, retained-byte, span-count, rate, TTL, and HTTP timeout limits. Configure a bearer token with `ATD_AUTH_TOKEN` (recommended for secrets) or `--auth-token`; clients must send `Authorization: Bearer <token>` to OTLP and admin endpoints. `/health` intentionally remains unauthenticated for liveness probes. An empty token preserves backward compatibility and disables built-in authentication.
+
+Built-in bearer authentication does not provide TLS or tenant authorization. Use TLS at a trusted reverse proxy or OpenTelemetry Collector, rotate tokens regularly, bind admin endpoints to private interfaces, and use `--redact-report` where topology must not be exposed. Configure `redactAttributes` for local sensitive keys; payload-like attributes are always redacted.

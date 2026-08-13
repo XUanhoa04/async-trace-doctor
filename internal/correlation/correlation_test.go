@@ -93,6 +93,28 @@ func TestAttributeFallbackDoesNotCrossEnvironment(t *testing.T) {
 	}
 }
 
+func TestStrongContextScopeIsolation(t *testing.T) {
+	now := time.Now()
+	baseProducer := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Start: now, End: now, Attributes: attrs("send", ""), ResourceAttributes: map[string]any{"deployment.environment.name": "prod", "service.namespace": "tenant-a"}}
+	for _, tc := range []struct {
+		name, environment, namespace string
+		want                         int
+	}{
+		{name: "different environment", environment: "staging", namespace: "tenant-a", want: 0},
+		{name: "different namespace", environment: "prod", namespace: "tenant-b", want: 0},
+		{name: "missing scope allowed", want: 1},
+		{name: "matching scope", environment: "prod", namespace: "tenant-a", want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			consumer := model.Span{TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb", Start: now.Add(time.Second), Attributes: attrs("process", ""), ResourceAttributes: map[string]any{"deployment.environment.name": tc.environment, "service.namespace": tc.namespace}, Links: []model.Link{{TraceID: baseProducer.TraceID, SpanID: baseProducer.SpanID}}}
+			got := Correlate([]model.Span{baseProducer, consumer}, time.Minute)
+			if len(got.Correlations) != tc.want {
+				t.Fatalf("correlations = %d, want %d: %#v", len(got.Correlations), tc.want, got.Correlations)
+			}
+		})
+	}
+}
+
 func TestKafkaPartitionOffsetIdentityWithoutMessageID(t *testing.T) {
 	now := time.Now()
 	p := model.Span{TraceID: "p", SpanID: "p", Start: now, End: now, Attributes: attrs("send", "")}

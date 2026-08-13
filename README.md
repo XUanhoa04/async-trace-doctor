@@ -78,6 +78,14 @@ curl http://localhost:8080/report
 curl http://localhost:8080/metrics
 ```
 
+For a networked deployment, set `ATD_AUTH_TOKEN` (preferred over putting a
+secret in shell history) or pass `--auth-token`. The token protects OTLP,
+reports, metrics, probes other than `/health`, and config reload. Use
+`--redact-report` to omit topology and hash service names. Live state is
+bounded by both `--max-spans` and `--max-retained-bytes`; request rate is
+controlled by `--rate-limit` and `--rate-burst`. Reload validated rules
+atomically with `POST /admin/reload` or `SIGHUP`.
+
 Run the broker-backed Kafka demo:
 
 ```bash
@@ -153,7 +161,7 @@ go test -run '^$' -bench BenchmarkCorrelate -benchmem -count 3 ./internal/correl
 
 The evaluator currently separates four core cases, two holdout cases, three adversarial cases, and five live Kafka scenarios. Adversarial coverage includes an unresolved valid link, cross-environment message-ID collision, and RabbitMQ producer/consumer destination-shape differences.
 
-It reports exact finding-set accuracy (rule IDs and expected counts), per-rule precision and recall, topology accuracy, normal false-positive rate, and SHA-256 provenance for rules and datasets. These remain small synthetic datasets and are not production-accuracy claims.
+It reports exact finding-set accuracy (rule IDs and expected counts), per-rule precision and recall, topology accuracy, normal false-positive rate, and SHA-256 provenance for rules and datasets. Pass `--sweep` to include correlation-window and duplicate-threshold sensitivity analysis. These remain small synthetic datasets and are not production-accuracy claims.
 
 ```bash
 go run ./evaluation/cmd/evaluate

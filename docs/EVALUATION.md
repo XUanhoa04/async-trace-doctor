@@ -9,6 +9,10 @@ AsyncTraceDoctor separates four evidence classes: core regression cases, holdout
 3. After the report is complete, compare its rule set and topology with ground truth.
 4. Record metrics and content provenance.
 
+Use `go run ./evaluation/cmd/evaluate --sweep` to add an opt-in sensitivity
+analysis over correlation windows and duplicate thresholds. It is disabled by
+default because it replays the core dataset for every candidate value.
+
 Current offline datasets contain:
 
 - four core cases: normal link, broken context, incomplete batch, duplicate processing;

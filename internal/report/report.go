@@ -44,11 +44,15 @@ func WriteTable(w io.Writer, r model.Report) error {
 	return nil
 }
 func trim(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	if n < 2 {
-		return s[:n]
+	if n <= 0 {
+		return ""
 	}
-	return s[:n-1] + "…"
+	if n < 2 {
+		return string(runes[:n])
+	}
+	return string(runes[:n-1]) + "…"
 }

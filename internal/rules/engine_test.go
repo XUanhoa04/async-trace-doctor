@@ -3,12 +3,14 @@ package rules
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/XUanhoa04/async-trace-doctor/internal/config"
+	"github.com/XUanhoa04/async-trace-doctor/internal/correlation"
 	"github.com/XUanhoa04/async-trace-doctor/internal/ingest"
 	"github.com/XUanhoa04/async-trace-doctor/internal/model"
 )
@@ -86,6 +88,30 @@ func TestClockSkewFindingAndSignedEvidence(t *testing.T) {
 	report := Engine{Config: cfg}.Audit([]model.Span{p, c})
 	if finding := findRule(report, "ATD-TIM-001"); finding == nil || finding.Evidence["observed_latency"] != "-8s" {
 		t.Fatalf("missing signed clock-skew finding: %#v", report.Findings)
+	}
+}
+
+func TestClockSkewIgnoresLowConfidenceHeuristic(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	p := messagingSpan("p", "producer", "send", now, now.Add(10*time.Second))
+	c := messagingSpan("c", "consumer", "process", now.Add(2*time.Second), now.Add(3*time.Second))
+	report := Engine{Config: cfg}.Audit([]model.Span{p, c})
+	assertNoRule(t, report, "ATD-TIM-001")
+}
+
+func BenchmarkBuildTopology(b *testing.B) {
+	now := time.Now()
+	spans := make([]model.Span, 2000)
+	result := correlation.Result{Correlations: make([]model.Correlation, 1000)}
+	for i := 0; i < 1000; i++ {
+		spans[i*2] = messagingSpan(fmt.Sprintf("p-%d", i), fmt.Sprintf("producer-%d", i%10), "send", now, now.Add(time.Millisecond))
+		spans[i*2+1] = messagingSpan(fmt.Sprintf("c-%d", i), fmt.Sprintf("consumer-%d", i%10), "process", now.Add(time.Second), now.Add(2*time.Second))
+		result.Correlations[i] = model.Correlation{ProducerIndex: i * 2, ConsumerIndex: i*2 + 1}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = buildTopology(spans, result)
 	}
 }
 

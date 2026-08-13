@@ -19,7 +19,7 @@ audit report ──────────────────────�
 - `internal/model` defines normalized spans, links, coverage, findings, topology, and schema-versioned reports.
 - `internal/correlation` builds context, route, and message-identity indexes. Exact links/parents outrank attributes; time matching is explicitly low confidence.
 - `internal/rules` maps versioned policy to implemented checks. YAML controls severity, thresholds, messages, and operation/system/service/destination/environment scope; checks still require Go implementation.
-- `internal/server` receives OTLP, deduplicates identical exports, rejects conflicting identities/capacity overflow with OTLP partial-success, audits snapshots, and exposes bounded-label metrics.
+- `internal/server` authenticates and rate-limits OTLP, deduplicates identical exports, rejects conflicting identities/count/byte overflow with OTLP partial-success, audits generation-cached snapshots, reloads rules atomically, and exposes bounded-label metrics.
 - `evaluation/cmd/evaluate` is separate from production packages and loads ground truth only after audit output exists.
 
 ## Correlation semantics
@@ -47,9 +47,9 @@ Coverage becomes `degraded` when the receiver rejects spans, state TTL evicts ev
 
 ## Bounded state and temporality
 
-`--max-spans` is an admission limit. Existing correlation evidence is retained until TTL; excess new spans are rejected and disclosed through OTLP partial-success. `--state-ttl` must be at least the correlation window.
+`--max-spans` and `--max-retained-bytes` are parallel admission limits. Existing correlation evidence is retained until TTL; excess new spans are rejected and disclosed through OTLP partial-success. `--state-ttl` must be at least the correlation window. Snapshot copies are reused while the store generation is unchanged.
 
-Identical `{trace_id, span_id}` exports are deduplicated. Conflicting content for the same identity is rejected and counted. Audit work happens on a copied snapshot so receivers do not hold the store lock during analysis.
+Identical `{trace_id, span_id}` exports are deduplicated with a content-hash fast path. Conflicting content for the same identity is rejected and counted. Audit work happens on a cached copied snapshot so receivers do not hold the store lock during analysis.
 
 Prometheus violation counters increment once per stable finding fingerprint. `async_trace_active_findings` represents the latest snapshot. Queue-latency histograms observe all non-negative correlations, not only threshold violations.
 

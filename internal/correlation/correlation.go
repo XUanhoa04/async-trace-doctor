@@ -10,17 +10,18 @@ import (
 )
 
 type Result struct {
-	Correlations         []model.Correlation
-	ProducerMatched      map[int]bool
-	ConsumerMatched      map[int]bool
-	ContextReferences    map[int]int
-	UnresolvedReferences map[int]int
+	Correlations          []model.Correlation
+	CorrelationByConsumer map[int][]int
+	ProducerMatched       map[int]bool
+	ConsumerMatched       map[int]bool
+	ContextReferences     map[int]int
+	UnresolvedReferences  map[int]int
 }
 
 // Correlate follows the semantic-convention preference order: links, direct
 // parent context, messaging identity, then a bounded low-confidence heuristic.
 func Correlate(spans []model.Span, window time.Duration) Result {
-	res := Result{ProducerMatched: map[int]bool{}, ConsumerMatched: map[int]bool{}, ContextReferences: map[int]int{}, UnresolvedReferences: map[int]int{}}
+	res := Result{ProducerMatched: map[int]bool{}, ConsumerMatched: map[int]bool{}, CorrelationByConsumer: map[int][]int{}, ContextReferences: map[int]int{}, UnresolvedReferences: map[int]int{}}
 	producersByContext := map[string][]int{}
 	producersByMessage := map[string][]int{}
 	producersByRoute := map[string][]int{}
@@ -71,7 +72,7 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 		if len(linked) > 0 {
 			pis := sortedKeys(linked)
 			for _, pi := range pis {
-				add(&res, spans, pi, ci, "span_link", model.ConfidenceHigh)
+				add(&res, spans, pi, ci, model.MethodSpanLink, model.ConfidenceHigh)
 			}
 			continue
 		}
@@ -80,7 +81,7 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 			matched := false
 			for _, pi := range producersByContext[key(c.TraceID, c.ParentSpanID)] {
 				if strongScopeCompatible(spans[pi], c) {
-					add(&res, spans, pi, ci, "parent_context", model.ConfidenceHigh)
+					add(&res, spans, pi, ci, model.MethodParentContext, model.ConfidenceHigh)
 					matched = true
 					break
 				}
@@ -105,9 +106,9 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 			}
 			sortCandidates(candidates)
 			if len(candidates) > 0 {
-				method := "messaging_attributes"
-				if identityKind == "kafka_partition_offset" {
-					method = "kafka_partition_offset"
+				method := model.MethodMessagingAttrs
+				if identityKind == model.MethodKafkaPartOffset {
+					method = model.MethodKafkaPartOffset
 				}
 				add(&res, spans, candidates[0].index, ci, method, model.ConfidenceMedium)
 				continue
@@ -119,7 +120,7 @@ func Correlate(spans []model.Span, window time.Duration) Result {
 		}
 		candidates := nearestRouteCandidates(producersByRoute[routeLookupKey(c)], spans, c, window, limit)
 		for _, candidate := range candidates {
-			add(&res, spans, candidate.index, ci, "time_window_heuristic", model.ConfidenceLow)
+			add(&res, spans, candidate.index, ci, model.MethodTimeHeuristic, model.ConfidenceLow)
 		}
 	}
 	return res
@@ -129,6 +130,7 @@ func add(r *Result, spans []model.Span, pi, ci int, method string, confidence mo
 	p, c := spans[pi], spans[ci]
 	lat := c.Start.Sub(p.End)
 	r.Correlations = append(r.Correlations, model.Correlation{ProducerIndex: pi, ConsumerIndex: ci, Producer: model.Ref(p), Consumer: model.Ref(c), Method: method, Confidence: confidence, QueueLatency: lat})
+	r.CorrelationByConsumer[ci] = append(r.CorrelationByConsumer[ci], len(r.Correlations)-1)
 	r.ProducerMatched[pi] = true
 	r.ConsumerMatched[ci] = true
 }
@@ -193,7 +195,9 @@ func compatible(p, c model.Span) bool {
 	return p.System() != "" && p.System() == c.System() && destinationCompatible(p, c) && scopeCompatible(p, c)
 }
 func strongScopeCompatible(p, c model.Span) bool {
-	return true // exact context identity is causal evidence; isolation belongs at ingestion/sharding boundaries
+	// Exact context is causal evidence, but it must not bridge two explicitly
+	// different tenant scopes. Missing scope remains backward-compatible.
+	return optionalEqual(p.Environment(), c.Environment()) && optionalEqual(p.ServiceNamespace(), c.ServiceNamespace())
 }
 func scopeCompatible(p, c model.Span) bool {
 	return optionalEqual(p.Environment(), c.Environment()) && optionalEqual(p.ServiceNamespace(), c.ServiceNamespace()) && optionalEqual(p.DestinationNamespace(), c.DestinationNamespace()) && optionalEqual(p.ServerAddress(), c.ServerAddress())

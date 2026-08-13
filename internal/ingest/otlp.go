@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"os"
@@ -78,7 +79,11 @@ func ReadPath(path string, limits Limits, redact []string) ([]model.Span, error)
 }
 
 func deduplicateSpans(spans []model.Span) ([]model.Span, error) {
-	seen := map[string]int{}
+	type entry struct {
+		index int
+		hash  uint64
+	}
+	seen := map[string]entry{}
 	out := make([]model.Span, 0, len(spans))
 	for _, span := range spans {
 		if span.TraceID == "" || span.SpanID == "" {
@@ -86,16 +91,26 @@ func deduplicateSpans(spans []model.Span) ([]model.Span, error) {
 			continue
 		}
 		identity := span.TraceID + "/" + span.SpanID
-		if index, ok := seen[identity]; ok {
-			if !reflect.DeepEqual(out[index], span) {
+		hash := dedupContentHash(span)
+		if existing, ok := seen[identity]; ok {
+			if existing.hash != hash || !reflect.DeepEqual(out[existing.index], span) {
 				return nil, fmt.Errorf("conflicting duplicate span identity %s", identity)
 			}
 			continue
 		}
-		seen[identity] = len(out)
+		seen[identity] = entry{index: len(out), hash: hash}
 		out = append(out, span)
 	}
 	return out, nil
+}
+
+func dedupContentHash(span model.Span) uint64 {
+	h := fnv.New64a()
+	for _, field := range []string{span.TraceID, span.SpanID, span.ParentSpanID, span.Name, span.Kind, span.Service, span.Start.UTC().Format(time.RFC3339Nano), span.End.UTC().Format(time.RFC3339Nano), span.StatusCode} {
+		_, _ = h.Write([]byte(field))
+		_, _ = h.Write([]byte{0})
+	}
+	return h.Sum64()
 }
 
 func readFile(path string, maxBytes int64, redact []string) ([]model.Span, error) {

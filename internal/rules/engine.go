@@ -23,7 +23,7 @@ type auditContext struct {
 // therefore eligible for an orphan finding after correlation has considered
 // every span in the input, regardless of the machine's wall clock.
 func (e Engine) Audit(spans []model.Span) model.Report {
-	return e.audit(spans, auditContext{finalized: true, coverageComplete: e.Config.Settings.InputCompleteness == "complete", watermark: eventWatermark(spans)})
+	return e.audit(spans, auditContext{finalized: true, coverageComplete: e.Config.Settings.InputCompleteness == model.CoverageComplete, watermark: eventWatermark(spans)})
 }
 
 // AuditWindow treats spans as an open live snapshot. Event time, rather than
@@ -43,7 +43,7 @@ func (e Engine) audit(spans []model.Span, audit auditContext) model.Report {
 		}
 		report.Findings = append(report.Findings, e.run(r, spans, corr, audit)...)
 	}
-	if report.Coverage.Status == "degraded" {
+	if report.Coverage.Status == model.CoverageDegraded {
 		for i := range report.Findings {
 			if report.Findings[i].EvidenceState == model.EvidenceInsufficient {
 				report.Findings[i].EvidenceState = model.EvidenceDegraded
@@ -125,22 +125,22 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 				ev = map[string]any{"context_references": corr.ContextReferences[i], "unresolved_references": corr.UnresolvedReferences[i], "links": len(s.Links), "parent_span_id_present": s.ParentSpanID != ""}
 			}
 			if bad {
-				f := finding(r, s, nil, "semantic_validation", confidenceFor(r.Check), ev)
+				f := finding(r, s, nil, model.MethodSemanticValidation, confidenceFor(r.Check), ev)
 				if r.Check == "missing_consumer_context" {
 					if candidate := correlationForConsumer(i, corr); candidate != nil {
 						producer := spans[candidate.ProducerIndex]
 						ev["candidate_correlation_method"] = candidate.Method
 						ev["candidate_confidence"] = candidate.Confidence
 						ev["candidate_queue_latency"] = candidate.QueueLatency.String()
-						method := "identity_candidate"
-						if candidate.Method == "time_window_heuristic" {
-							method = "time_candidate"
+						method := model.MethodIdentityCandidate
+						if candidate.Method == model.MethodTimeHeuristic {
+							method = model.MethodTimeCandidate
 						}
 						f = finding(r, producer, &s, method, model.ConfidenceHigh, ev)
 					}
 				}
 				if r.Check == "unresolved_consumer_context" {
-					f.CorrelationMethod = "unresolved_context_reference"
+					f.CorrelationMethod = model.MethodUnresolvedRef
 					f.Confidence = model.ConfidenceLow
 					f.EvidenceState = model.EvidenceInsufficient
 					unresolved := []string{}
@@ -168,7 +168,7 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 				if audit.coverageComplete && identity != "" {
 					conf = model.ConfidenceMedium
 				}
-				f := finding(r, s, nil, "none", conf, map[string]any{"correlation_window": e.Config.Settings.CorrelationWindow.Duration.String(), "identity_kind": identityKind, "identity_present": identity != "", "coverage_complete": audit.coverageComplete})
+				f := finding(r, s, nil, model.MethodNone, conf, map[string]any{"correlation_window": e.Config.Settings.CorrelationWindow.Duration.String(), "identity_kind": identityKind, "identity_present": identity != "", "coverage_complete": audit.coverageComplete})
 				markAbsenceEvidence(&f, audit)
 				out = append(out, f)
 			}
@@ -181,7 +181,7 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 				if audit.coverageComplete && identity != "" {
 					conf = model.ConfidenceMedium
 				}
-				f := finding(r, model.Span{}, &s, "none", conf, map[string]any{"correlation_window": e.Config.Settings.CorrelationWindow.Duration.String(), "identity_kind": identityKind, "identity_present": identity != "", "coverage_complete": audit.coverageComplete})
+				f := finding(r, model.Span{}, &s, model.MethodNone, conf, map[string]any{"correlation_window": e.Config.Settings.CorrelationWindow.Duration.String(), "identity_kind": identityKind, "identity_present": identity != "", "coverage_complete": audit.coverageComplete})
 				markAbsenceEvidence(&f, audit)
 				out = append(out, f)
 			}
@@ -197,7 +197,7 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 			}
 			coverage, validLinks, contexts := batchLinkCoverage(s, spans)
 			if coverage < count {
-				out = append(out, finding(r, model.Span{}, &s, "span_link", model.ConfidenceHigh, map[string]any{"batch_message_count": count, "covered_message_count": coverage, "valid_link_count": validLinks, "unique_context_count": contexts}))
+				out = append(out, finding(r, model.Span{}, &s, model.MethodSpanLink, model.ConfidenceHigh, map[string]any{"batch_message_count": count, "covered_message_count": coverage, "valid_link_count": validLinks, "unique_context_count": contexts}))
 			}
 		}
 	case "duplicate_processing":
@@ -229,7 +229,7 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 				if len(successes) > e.Config.Settings.DuplicateThreshold {
 					s := successes[0]
 					identityKind, _ := s.MessageIdentity()
-					out = append(out, finding(r, model.Span{}, &s, "messaging_attributes", model.ConfidenceHigh, map[string]any{"attempt_count": len(attempts), "successful_processing_count": len(successes), "failed_retry_count": failed, "threshold": e.Config.Settings.DuplicateThreshold, "identity_kind": identityKind, "consumer_group": s.ConsumerGroup()}))
+					out = append(out, finding(r, model.Span{}, &s, model.MethodMessagingAttrs, model.ConfidenceHigh, map[string]any{"attempt_count": len(attempts), "successful_processing_count": len(successes), "failed_retry_count": failed, "threshold": e.Config.Settings.DuplicateThreshold, "identity_kind": identityKind, "consumer_group": s.ConsumerGroup()}))
 				}
 			}
 		}
@@ -242,6 +242,9 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 		}
 	case "clock_skew":
 		for _, c := range corr.Correlations {
+			if c.Confidence != model.ConfidenceHigh {
+				continue
+			}
 			if c.QueueLatency < -e.Config.Settings.ClockSkewTolerance.Duration {
 				p, co := spans[c.ProducerIndex], spans[c.ConsumerIndex]
 				out = append(out, finding(r, p, &co, c.Method, c.Confidence, map[string]any{"observed_latency": c.QueueLatency.String(), "clock_skew_tolerance": e.Config.Settings.ClockSkewTolerance.Duration.String()}))
@@ -329,9 +332,9 @@ func (e Engine) topologyFindings(r config.Rule, spans []model.Span, corr correla
 }
 
 func topologyFinding(r config.Rule, edge model.Edge, kind string, confidence model.Confidence, evidence map[string]any) model.Finding {
-	method := "correlated_topology"
+	method := model.MethodCorrelatedTopology
 	if kind == "missing_edge" {
-		method = "expected_topology"
+		method = model.MethodExpectedTopology
 	}
 	isolation := map[string]any{}
 	for key, value := range map[string]string{"environment": edge.Environment, "service_namespace": edge.ServiceNamespace, "destination_namespace": edge.DestinationNamespace, "broker_address": edge.BrokerAddress} {
@@ -375,7 +378,37 @@ func buildTopology(spans []model.Span, c correlation.Result) []model.Edge {
 	for _, e := range m {
 		out = append(out, *e)
 	}
-	sort.Slice(out, func(i, j int) bool { return fmt.Sprint(out[i]) < fmt.Sprint(out[j]) })
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Producer != b.Producer {
+			return a.Producer < b.Producer
+		}
+		if a.System != b.System {
+			return a.System < b.System
+		}
+		if a.Destination != b.Destination {
+			return a.Destination < b.Destination
+		}
+		if a.Consumer != b.Consumer {
+			return a.Consumer < b.Consumer
+		}
+		if a.ConsumerGroup != b.ConsumerGroup {
+			return a.ConsumerGroup < b.ConsumerGroup
+		}
+		if a.Subscription != b.Subscription {
+			return a.Subscription < b.Subscription
+		}
+		if a.Environment != b.Environment {
+			return a.Environment < b.Environment
+		}
+		if a.ServiceNamespace != b.ServiceNamespace {
+			return a.ServiceNamespace < b.ServiceNamespace
+		}
+		if a.DestinationNamespace != b.DestinationNamespace {
+			return a.DestinationNamespace < b.DestinationNamespace
+		}
+		return a.BrokerAddress < b.BrokerAddress
+	})
 	return out
 }
 func (e Engine) missingRequiredConsumers(r config.Rule, expected config.ExpectedEdge, spans []model.Span, corr correlation.Result, audit auditContext) []model.Finding {
@@ -404,7 +437,7 @@ func (e Engine) missingRequiredConsumers(r config.Rule, expected config.Expected
 		}
 		if !found {
 			identityKind, identity := producer.MessageIdentity()
-			f := finding(r, producer, nil, "expected_delivery", model.ConfidenceMedium, map[string]any{"type": "missing_required_consumer", "consumer": expected.Consumer, "consumer_group": expected.ConsumerGroup, "subscription": expected.Subscription, "identity_kind": identityKind, "identity_present": identity != ""})
+			f := finding(r, producer, nil, model.MethodExpectedDelivery, model.ConfidenceMedium, map[string]any{"type": "missing_required_consumer", "consumer": expected.Consumer, "consumer_group": expected.ConsumerGroup, "subscription": expected.Subscription, "identity_kind": identityKind, "identity_present": identity != ""})
 			markAbsenceEvidence(&f, audit)
 			f.ConsumerService = expected.Consumer
 			f.ConsumerGroup = expected.ConsumerGroup
@@ -512,14 +545,6 @@ func contains(xs []string, x string) bool {
 	}
 	return false
 }
-func hasStrongConsumerContext(i int, c correlation.Result) bool {
-	for _, x := range c.Correlations {
-		if x.ConsumerIndex == i && (x.Method == "span_link" || x.Method == "parent_context") {
-			return true
-		}
-	}
-	return false
-}
 func confidenceFor(check string) model.Confidence {
 	if check == "unresolved_consumer_context" {
 		return model.ConfidenceLow
@@ -535,19 +560,17 @@ func markAbsenceEvidence(f *model.Finding, audit auditContext) {
 }
 
 func correlationForConsumer(index int, result correlation.Result) *model.Correlation {
-	for i := range result.Correlations {
-		if result.Correlations[i].ConsumerIndex == index {
-			return &result.Correlations[i]
-		}
+	if indices := result.CorrelationByConsumer[index]; len(indices) > 0 {
+		return &result.Correlations[indices[0]]
 	}
 	return nil
 }
 
 func baseCoverage(spans []model.Span, audit auditContext) model.Coverage {
-	coverage := model.Coverage{Status: "unknown", InputCompleteness: "unknown", RetainedSpans: len(spans)}
+	coverage := model.Coverage{Status: model.CoverageUnknown, InputCompleteness: model.CoverageUnknown, RetainedSpans: len(spans)}
 	if audit.coverageComplete {
-		coverage.Status = "complete"
-		coverage.InputCompleteness = "complete"
+		coverage.Status = model.CoverageComplete
+		coverage.InputCompleteness = model.CoverageComplete
 	} else {
 		coverage.Limitations = append(coverage.Limitations, "absence-based conclusions are unsafe without telemetry completeness evidence")
 	}
@@ -559,7 +582,7 @@ func baseCoverage(spans []model.Span, audit auditContext) model.Coverage {
 		}
 	}
 	if coverage.DroppedAttributes > 0 || coverage.DroppedLinks > 0 {
-		coverage.Status = "degraded"
+		coverage.Status = model.CoverageDegraded
 		coverage.Limitations = append(coverage.Limitations, "OTLP reported dropped attributes or links")
 	}
 	return coverage
