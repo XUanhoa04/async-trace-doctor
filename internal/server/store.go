@@ -235,7 +235,11 @@ func estimateSpanBytes(span model.Span) int64 {
 func estimateMapBytes(values map[string]any) int64 {
 	var n int64
 	for key, value := range values {
-		n += int64(64 + len(key) + len(fmt.Sprint(value)))
+		if value != nil {
+			n += int64(64 + len(key) + len(fmt.Sprint(value)))
+		} else {
+			n += int64(64 + len(key))
+		}
 	}
 	return n
 }
