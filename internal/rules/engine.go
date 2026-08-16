@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -623,7 +622,7 @@ func batchLinkCoverage(consumer model.Span, spans []model.Span) (coverage, valid
 		}
 		validLinks++
 		contextKey := link.TraceID + "/" + link.SpanID
-		if messageID := fmt.Sprint(link.Attributes["messaging.message.id"]); messageID != "" && messageID != "<nil>" {
+		if messageID := link.AttrString("messaging.message.id"); messageID != "" {
 			if messages[contextKey] == nil {
 				messages[contextKey] = map[string]bool{}
 			}

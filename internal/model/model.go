@@ -20,6 +20,14 @@ func (l Link) HasValidContext() bool {
 	return len(l.TraceID) == 32 && len(l.SpanID) == 16 && strings.Trim(l.TraceID, "0") != "" && strings.Trim(l.SpanID, "0") != ""
 }
 
+func (l Link) AttrString(key string) string {
+	v, ok := l.Attributes[key]
+	if !ok || v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+
 type Span struct {
 	TraceID                string         `json:"trace_id"`
 	SpanID                 string         `json:"span_id"`
@@ -40,7 +48,7 @@ type Span struct {
 
 func (s Span) AttrString(key string) string {
 	v, ok := s.Attributes[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	return fmt.Sprint(v)
@@ -48,7 +56,7 @@ func (s Span) AttrString(key string) string {
 
 func (s Span) ResourceAttrString(key string) string {
 	v, ok := s.ResourceAttributes[key]
-	if !ok {
+	if !ok || v == nil {
 		return ""
 	}
 	return fmt.Sprint(v)
