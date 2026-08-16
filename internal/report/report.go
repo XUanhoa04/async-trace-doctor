@@ -18,7 +18,11 @@ func WriteJSON(w io.Writer, report model.Report, pretty bool) error {
 }
 
 func WriteTable(w io.Writer, r model.Report) error {
-	if _, err := fmt.Fprintf(w, "AsyncTraceDoctor: %d spans, %d messaging spans, %d findings, context completeness %.1f%%, coverage %s\n", r.Summary.AuditedSpans, r.Summary.MessagingSpans, r.Summary.Violations, r.Summary.ContextCompletenessRatio*100, r.Coverage.Status); err != nil {
+	coverageStatus := r.Coverage.Status
+	if coverageStatus == "" {
+		coverageStatus = "unknown"
+	}
+	if _, err := fmt.Fprintf(w, "AsyncTraceDoctor: %d spans, %d messaging spans, %d findings, context completeness %.1f%%, coverage %s\n", r.Summary.AuditedSpans, r.Summary.MessagingSpans, r.Summary.Violations, r.Summary.ContextCompletenessRatio*100, coverageStatus); err != nil {
 		return err
 	}
 	if len(r.Findings) == 0 {
