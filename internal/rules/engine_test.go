@@ -384,4 +384,3 @@ func TestInvalidContextReferenceFinding(t *testing.T) {
 		t.Fatalf("invalid parent context finding ATD-SEM-008 not detected: %#v", reportParent.Findings)
 	}
 }
-
