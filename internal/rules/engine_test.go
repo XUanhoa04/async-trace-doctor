@@ -340,3 +340,48 @@ func TestInvalidIdentityAndTimestampsAreExplicitFindings(t *testing.T) {
 		t.Fatalf("invalid telemetry was not surfaced: %#v", report.Findings)
 	}
 }
+
+func TestMissingDestinationFinding(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	span := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	delete(span.Attributes, "messaging.destination.name")
+	report := Engine{Config: cfg}.Audit([]model.Span{span})
+	if findRule(report, "ATD-SEM-003") == nil {
+		t.Fatalf("missing destination finding ATD-SEM-003 not detected: %#v", report.Findings)
+	}
+}
+
+func TestInvalidSpanKindFinding(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	// send operation with CONSUMER kind
+	span := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	span.Kind = "CONSUMER"
+	report := Engine{Config: cfg}.Audit([]model.Span{span})
+	if findRule(report, "ATD-SEM-005") == nil {
+		t.Fatalf("invalid span kind finding ATD-SEM-005 not detected: %#v", report.Findings)
+	}
+}
+
+func TestInvalidContextReferenceFinding(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+
+	// Link with invalid context (all zeros)
+	spanLink := messagingSpan("c1", "consumer", "process", now, now.Add(time.Second))
+	spanLink.Links = []model.Link{{TraceID: strings.Repeat("0", 32), SpanID: strings.Repeat("0", 16)}}
+	reportLink := Engine{Config: cfg}.Audit([]model.Span{spanLink})
+	if findRule(reportLink, "ATD-SEM-008") == nil {
+		t.Fatalf("invalid link context finding ATD-SEM-008 not detected: %#v", reportLink.Findings)
+	}
+
+	// Invalid ParentSpanID (wrong length / non-zero)
+	spanParent := messagingSpan("c2", "consumer", "process", now, now.Add(time.Second))
+	spanParent.ParentSpanID = "too-short"
+	reportParent := Engine{Config: cfg}.Audit([]model.Span{spanParent})
+	if findRule(reportParent, "ATD-SEM-008") == nil {
+		t.Fatalf("invalid parent context finding ATD-SEM-008 not detected: %#v", reportParent.Findings)
+	}
+}
+
