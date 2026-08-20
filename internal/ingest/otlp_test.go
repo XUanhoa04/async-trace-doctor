@@ -10,7 +10,9 @@ import (
 
 	"github.com/XUanhoa04/async-trace-doctor/internal/model"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	"google.golang.org/protobuf/proto"
+	"time"
 )
 
 func TestDecodeCollectorOTLPJSON(t *testing.T) {
@@ -133,6 +135,125 @@ func TestDecodeJSONAndProtobufParity(t *testing.T) {
 	protoSpans := FromProto(decoded.ResourceSpans, nil)
 	if !reflect.DeepEqual(jsonSpans, protoSpans) {
 		t.Fatalf("JSON/protobuf mismatch:\njson=%#v\nprotobuf=%#v", jsonSpans, protoSpans)
+	}
+}
+
+func TestAnyValueDecoder(t *testing.T) {
+	if got := value(nil); got != nil {
+		t.Errorf("value(nil) = %v, want nil", got)
+	}
+
+	strVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "hello"}}
+	if got := value(strVal); got != "hello" {
+		t.Errorf("value(StringValue) = %v, want hello", got)
+	}
+
+	boolVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: true}}
+	if got := value(boolVal); got != true {
+		t.Errorf("value(BoolValue) = %v, want true", got)
+	}
+
+	intVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_IntValue{IntValue: 12345}}
+	if got := value(intVal); got != int64(12345) {
+		t.Errorf("value(IntValue) = %v, want 12345", got)
+	}
+
+	doubleVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: 3.14}}
+	if got := value(doubleVal); got != 3.14 {
+		t.Errorf("value(DoubleValue) = %v, want 3.14", got)
+	}
+
+	bytesVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_BytesValue{BytesValue: []byte("abc")}}
+	if got := value(bytesVal); got != "[3 bytes]" {
+		t.Errorf("value(BytesValue) = %v, want [3 bytes]", got)
+	}
+
+	arrVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_ArrayValue{ArrayValue: &commonv1.ArrayValue{Values: []*commonv1.AnyValue{strVal, intVal}}}}
+	if got := value(arrVal); got != "[2 values]" {
+		t.Errorf("value(ArrayValue) = %v, want [2 values]", got)
+	}
+
+	kvVal := &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{KvlistValue: &commonv1.KeyValueList{Values: []*commonv1.KeyValue{{Key: "k", Value: strVal}}}}}
+	if got := value(kvVal); got != "{1 attributes}" {
+		t.Errorf("value(KvlistValue) = %v, want {1 attributes}", got)
+	}
+}
+
+func TestIsPayloadAttribute(t *testing.T) {
+	payloadKeys := []string{
+		"message.payload",
+		"messaging.payload.size",
+		"http.request.body",
+		"http.response.body.content",
+		"PAYLOAD",
+	}
+	for _, key := range payloadKeys {
+		if !isPayloadAttribute(key) {
+			t.Errorf("expected isPayloadAttribute(%q) to be true", key)
+		}
+	}
+
+	nonPayloadKeys := []string{
+		"messaging.system",
+		"messaging.destination.name",
+		"service.name",
+		"http.status_code",
+	}
+	for _, key := range nonPayloadKeys {
+		if isPayloadAttribute(key) {
+			t.Errorf("expected isPayloadAttribute(%q) to be false", key)
+		}
+	}
+}
+
+func TestReadPathErrors(t *testing.T) {
+	// Non-existent path
+	_, err := ReadPath(filepath.Join("..", "..", "testdata", "non_existent_file.json"), Limits{}, nil)
+	if err == nil {
+		t.Fatal("expected error for non-existent path, got nil")
+	}
+
+	// Empty directory (create temp dir with no json files)
+	tempDir := t.TempDir()
+	_, err = ReadPath(tempDir, Limits{}, nil)
+	if err == nil {
+		t.Fatal("expected error for directory with no json files, got nil")
+	}
+}
+
+func TestDedupContentHashDifferences(t *testing.T) {
+	now := time.Now()
+	base := model.Span{
+		TraceID: "0123456789abcdef0123456789abcdef",
+		SpanID:  "0123456789abcdef",
+		Name:    "process",
+		Kind:    "CONSUMER",
+		Service: "order-worker",
+		Start:   now,
+		End:     now.Add(time.Second),
+	}
+
+	baseHash := dedupContentHash(base)
+
+	// Differing service
+	diffService := base
+	diffService.Service = "different-worker"
+	if dedupContentHash(diffService) == baseHash {
+		t.Errorf("expected different hash for differing service")
+	}
+
+	// Differing status
+	diffStatus := base
+	diffStatus.StatusCode = "ERROR"
+	if dedupContentHash(diffStatus) == baseHash {
+		t.Errorf("expected different hash for differing status code")
+	}
+
+	// Differing time
+	diffTime := base
+	diffTime.End = now.Add(2 * time.Second)
+	if dedupContentHash(diffTime) == baseHash {
+		t.Errorf("expected different hash for differing end time")
 	}
 }
 
