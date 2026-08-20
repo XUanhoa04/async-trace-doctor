@@ -17,7 +17,17 @@ type Link struct {
 }
 
 func (l Link) HasValidContext() bool {
-	return len(l.TraceID) == 32 && len(l.SpanID) == 16 && strings.Trim(l.TraceID, "0") != "" && strings.Trim(l.SpanID, "0") != ""
+	return len(l.TraceID) == 32 && len(l.SpanID) == 16 && strings.Trim(l.TraceID, "0") != "" && strings.Trim(l.SpanID, "0") != "" && isHex(l.TraceID) && isHex(l.SpanID)
+}
+
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func (l Link) AttrString(key string) string {

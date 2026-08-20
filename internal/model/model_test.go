@@ -41,6 +41,8 @@ func TestLinkAttrStringAndValidContext(t *testing.T) {
 		{TraceID: "0123456789abcdef0123456789abcdef", SpanID: "0000000000000000"},
 		{TraceID: "short", SpanID: "0123456789abcdef"},
 		{TraceID: "0123456789abcdef0123456789abcdef", SpanID: "short"},
+		{TraceID: "0123456789abcdef0123456789abcdeg", SpanID: "0123456789abcdef"}, // 'g' is non-hex
+		{TraceID: "0123456789abcdef0123456789abcdef", SpanID: "0123456789abcdeg"}, // 'g' is non-hex
 	}
 	for _, invalid := range invalidLinks {
 		if invalid.HasValidContext() {
