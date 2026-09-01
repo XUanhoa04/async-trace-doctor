@@ -101,8 +101,8 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 				bad = len(expected) > 0 && !contains(expected, s.Kind)
 				ev = map[string]any{"operation": s.Operation(), "actual_kind": s.Kind, "expected_kinds": expected}
 			case "invalid_span_identity":
-				bad = len(s.TraceID) != 32 || len(s.SpanID) != 16 || allZeroHex(s.TraceID) || allZeroHex(s.SpanID)
-				ev = map[string]any{"trace_id_length": len(s.TraceID), "span_id_length": len(s.SpanID), "trace_id_zero": allZeroHex(s.TraceID), "span_id_zero": allZeroHex(s.SpanID)}
+				bad = !model.HasValidTraceID(s.TraceID) || !model.HasValidSpanID(s.SpanID)
+				ev = map[string]any{"trace_id_length": len(s.TraceID), "span_id_length": len(s.SpanID), "trace_id_valid": model.HasValidTraceID(s.TraceID), "span_id_valid": model.HasValidSpanID(s.SpanID)}
 			case "invalid_timestamps":
 				bad = timestampMissing(s.Start) || timestampMissing(s.End) || s.End.Before(s.Start)
 				ev = map[string]any{"start_time": s.Start.UTC().Format(time.RFC3339Nano), "end_time": s.End.UTC().Format(time.RFC3339Nano), "end_before_start": s.End.Before(s.Start)}
@@ -113,7 +113,7 @@ func (e Engine) run(r config.Rule, spans []model.Span, corr correlation.Result, 
 						invalidLinks++
 					}
 				}
-				invalidParent := s.ParentSpanID != "" && (len(s.TraceID) != 32 || len(s.ParentSpanID) != 16 || allZeroHex(s.TraceID) || allZeroHex(s.ParentSpanID))
+				invalidParent := s.ParentSpanID != "" && (!model.HasValidTraceID(s.TraceID) || !model.HasValidSpanID(s.ParentSpanID))
 				bad = invalidLinks > 0 || invalidParent
 				ev = map[string]any{"invalid_link_count": invalidLinks, "invalid_parent_context": invalidParent}
 			case "missing_consumer_context":

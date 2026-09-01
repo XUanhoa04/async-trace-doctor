@@ -384,3 +384,36 @@ func TestInvalidContextReferenceFinding(t *testing.T) {
 		t.Fatalf("invalid parent context finding ATD-SEM-008 not detected: %#v", reportParent.Findings)
 	}
 }
+
+func TestInvalidNonHexIdentityAndParentContext(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+
+	// Span with non-hex TraceID
+	spanNonHexTrace := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	spanNonHexTrace.TraceID = "0123456789abcdef0123456789abcdeg" // 'g' is non-hex
+	spanNonHexTrace.SpanID = "0123456789abcdef"
+	reportTrace := Engine{Config: cfg}.Audit([]model.Span{spanNonHexTrace})
+	if findRule(reportTrace, "ATD-SEM-006") == nil {
+		t.Fatalf("non-hex trace ID finding ATD-SEM-006 not detected: %#v", reportTrace.Findings)
+	}
+
+	// Span with non-hex SpanID
+	spanNonHexSpan := messagingSpan("p", "producer", "send", now, now.Add(time.Second))
+	spanNonHexSpan.TraceID = "0123456789abcdef0123456789abcdef"
+	spanNonHexSpan.SpanID = "0123456789abcdeg" // 'g' is non-hex
+	reportSpan := Engine{Config: cfg}.Audit([]model.Span{spanNonHexSpan})
+	if findRule(reportSpan, "ATD-SEM-006") == nil {
+		t.Fatalf("non-hex span ID finding ATD-SEM-006 not detected: %#v", reportSpan.Findings)
+	}
+
+	// Consumer with non-hex ParentSpanID
+	spanNonHexParent := messagingSpan("c", "consumer", "process", now, now.Add(time.Second))
+	spanNonHexParent.TraceID = "0123456789abcdef0123456789abcdef"
+	spanNonHexParent.SpanID = "0123456789abcdef"
+	spanNonHexParent.ParentSpanID = "0123456789abcdeg" // 'g' is non-hex
+	reportParent := Engine{Config: cfg}.Audit([]model.Span{spanNonHexParent})
+	if findRule(reportParent, "ATD-SEM-008") == nil {
+		t.Fatalf("non-hex parent span ID finding ATD-SEM-008 not detected: %#v", reportParent.Findings)
+	}
+}
