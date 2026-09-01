@@ -19,6 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	Version   = "1.0.0"
+	Commit    = "none"
+	BuildDate = "unknown"
+)
+
 var errPolicyViolation = errors.New("policy violation")
 
 func main() {
@@ -31,12 +37,21 @@ func main() {
 	}
 }
 func root() *cobra.Command {
-	cmd := &cobra.Command{Use: "async-trace-doctor", Short: "Audit OpenTelemetry messaging trace quality", SilenceErrors: true, SilenceUsage: true}
-	cmd.AddCommand(auditCmd(), serveCmd())
+	cmd := &cobra.Command{Use: "async-trace-doctor", Short: "Audit OpenTelemetry messaging trace quality", Version: Version, SilenceErrors: true, SilenceUsage: true}
+	cmd.AddCommand(auditCmd(), serveCmd(), versionCmd())
 	return cmd
 }
+func versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the AsyncTraceDoctor version",
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "async-trace-doctor version %s (commit: %s, date: %s)\n", Version, Commit, BuildDate)
+		},
+	}
+}
 func auditCmd() *cobra.Command {
-	var input, rulesPath, jsonPath string
+	var input, rulesPath, jsonPath, mdPath string
 	var maxBytes int64
 	var maxSpans int
 	c := &cobra.Command{Use: "audit", Short: "Audit OTLP JSON or JSONL from a file or directory", RunE: func(_ *cobra.Command, _ []string) error {
@@ -65,6 +80,19 @@ func auditCmd() *cobra.Command {
 				return err
 			}
 		}
+		if mdPath != "" {
+			f, err := os.Create(mdPath)
+			if err != nil {
+				return fmt.Errorf("create Markdown report: %w", err)
+			}
+			if err = report.WriteMarkdown(f, r); err != nil {
+				_ = f.Close()
+				return err
+			}
+			if err = f.Close(); err != nil {
+				return err
+			}
+		}
 		if (rules.Engine{Config: cfg}).ViolatesPolicy(r) {
 			return errPolicyViolation
 		}
@@ -73,6 +101,7 @@ func auditCmd() *cobra.Command {
 	c.Flags().StringVarP(&input, "input", "i", "", "OTLP JSON/JSONL file or directory (required)")
 	c.Flags().StringVar(&rulesPath, "rules", "config/rules.yaml", "versioned rule config")
 	c.Flags().StringVarP(&jsonPath, "json", "j", "", "write JSON report to this path")
+	c.Flags().StringVarP(&mdPath, "markdown", "m", "", "write Markdown report to this path")
 	c.Flags().Int64Var(&maxBytes, "max-bytes", 64<<20, "maximum aggregate input bytes")
 	c.Flags().IntVar(&maxSpans, "max-spans", 100000, "maximum input spans")
 	_ = c.MarkFlagRequired("input")

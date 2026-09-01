@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ func TestRootCommandStructure(t *testing.T) {
 	subCommands := cmd.Commands()
 	foundAudit := false
 	foundServe := false
+	foundVersion := false
 	for _, sc := range subCommands {
 		if sc.Name() == "audit" {
 			foundAudit = true
@@ -26,9 +28,24 @@ func TestRootCommandStructure(t *testing.T) {
 		if sc.Name() == "serve" {
 			foundServe = true
 		}
+		if sc.Name() == "version" {
+			foundVersion = true
+		}
 	}
-	if !foundAudit || !foundServe {
-		t.Errorf("expected audit and serve subcommands, found: audit=%v, serve=%v", foundAudit, foundServe)
+	if !foundAudit || !foundServe || !foundVersion {
+		t.Errorf("expected audit, serve, and version subcommands, found: audit=%v, serve=%v, version=%v", foundAudit, foundServe, foundVersion)
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	cmd := versionCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("version command error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "async-trace-doctor version") {
+		t.Errorf("expected version output, got: %s", buf.String())
 	}
 }
 
@@ -46,6 +63,11 @@ func TestAuditCommandFlagDefaults(t *testing.T) {
 	inputFlag := cmd.Flag("input")
 	if inputFlag == nil {
 		t.Errorf("expected input flag to exist")
+	}
+
+	mdFlag := cmd.Flag("markdown")
+	if mdFlag == nil {
+		t.Errorf("expected markdown flag to exist")
 	}
 }
 
