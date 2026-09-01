@@ -151,3 +151,67 @@ func TestWriteTableWithFindings(t *testing.T) {
 		t.Errorf("expected ellipsis in truncated edge, got:\n%s", out)
 	}
 }
+
+func TestWriteMarkdownEmptyFindings(t *testing.T) {
+	r := model.Report{
+		Coverage: model.Coverage{Status: "complete"},
+		Summary: model.Summary{
+			AuditedSpans:             10,
+			MessagingSpans:           4,
+			Violations:               0,
+			ContextCompletenessRatio: 1.0,
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, r); err != nil {
+		t.Fatalf("WriteMarkdown error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "## AsyncTraceDoctor Audit Report") {
+		t.Errorf("expected header in markdown, got:\n%s", out)
+	}
+	if !strings.Contains(out, "No policy violations detected.") {
+		t.Errorf("expected clean message in markdown, got:\n%s", out)
+	}
+	if !strings.Contains(out, "| Audited Spans | 10 |") {
+		t.Errorf("expected metric row in markdown, got:\n%s", out)
+	}
+}
+
+func TestWriteMarkdownWithFindings(t *testing.T) {
+	r := model.Report{
+		Summary: model.Summary{
+			AuditedSpans:             50,
+			MessagingSpans:           20,
+			Violations:               1,
+			ContextCompletenessRatio: 0.95,
+		},
+		Findings: []model.Finding{
+			{
+				RuleID:            "ATD-SEM-001",
+				Severity:          "warning",
+				ProducerService:   "order-producer",
+				ConsumerService:   "payment-consumer",
+				ConsumerGroup:     "payment-group",
+				Subscription:      "payment-sub",
+				MessagingSystem:   "kafka",
+				Destination:       "payments",
+				CorrelationMethod: "messaging_attributes",
+				Confidence:        model.ConfidenceHigh,
+				EvidenceState:     model.EvidenceSufficient,
+				Message:           "missing trace context link",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, r); err != nil {
+		t.Fatalf("WriteMarkdown error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "### Findings (1)") {
+		t.Errorf("expected findings header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "| `WARNING` | `ATD-SEM-001` | order-producer &rarr; payment-consumer[payment-group]{payment-sub} | kafka/payments | messaging_attributes | high | sufficient | missing trace context link |") {
+		t.Errorf("expected formatted markdown table row, got:\n%s", out)
+	}
+}
