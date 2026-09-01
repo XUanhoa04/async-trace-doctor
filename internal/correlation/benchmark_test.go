@@ -26,6 +26,30 @@ func BenchmarkCorrelateHotRouteWithoutIdentity(b *testing.B) {
 	}
 }
 
+func BenchmarkRouteLookupKey(b *testing.B) {
+	s := model.Span{
+		Attributes: map[string]any{
+			"messaging.system":           "RabbitMQ",
+			"messaging.destination.name": "events:order.created",
+		},
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = routeLookupKey(s)
+	}
+}
+
+func BenchmarkKeyHelper(b *testing.B) {
+	t := "0123456789abcdef0123456789abcdef"
+	s := "0123456789abcdef"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = key(t, s)
+	}
+}
+
 func benchmarkSpans(routes, messagesPerRoute int, withIdentity bool) []model.Span {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	spans := make([]model.Span, 0, routes*messagesPerRoute*2)

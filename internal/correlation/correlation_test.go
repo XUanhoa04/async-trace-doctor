@@ -148,3 +148,44 @@ func withBatch(a map[string]any, count int) map[string]any {
 	b["messaging.batch.message_count"] = count
 	return b
 }
+
+func TestRouteLookupKeyAndKeyHelper(t *testing.T) {
+	if got := key("trace123", "span456"); got != "trace123/span456" {
+		t.Errorf("key() = %q, want %q", got, "trace123/span456")
+	}
+
+	emptySpan := model.Span{}
+	if got := routeLookupKey(emptySpan); got != "" {
+		t.Errorf("routeLookupKey(empty) = %q, want empty string", got)
+	}
+
+	kafkaSpan := model.Span{
+		Attributes: map[string]any{
+			"messaging.system":           "Kafka",
+			"messaging.destination.name": "orders",
+		},
+	}
+	if got := routeLookupKey(kafkaSpan); got != "kafka\x00orders" {
+		t.Errorf("routeLookupKey(kafka) = %q, want %q", got, "kafka\x00orders")
+	}
+
+	rabbitSpanWithColon := model.Span{
+		Attributes: map[string]any{
+			"messaging.system":           "RabbitMQ",
+			"messaging.destination.name": "events:order.created",
+		},
+	}
+	if got := routeLookupKey(rabbitSpanWithColon); got != "rabbitmq\x00events" {
+		t.Errorf("routeLookupKey(rabbitmq with colon) = %q, want %q", got, "rabbitmq\x00events")
+	}
+
+	rabbitSpanNoColon := model.Span{
+		Attributes: map[string]any{
+			"messaging.system":           "rabbitmq",
+			"messaging.destination.name": "direct-queue",
+		},
+	}
+	if got := routeLookupKey(rabbitSpanNoColon); got != "rabbitmq\x00direct-queue" {
+		t.Errorf("routeLookupKey(rabbitmq no colon) = %q, want %q", got, "rabbitmq\x00direct-queue")
+	}
+}

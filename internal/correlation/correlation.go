@@ -1,7 +1,6 @@
 package correlation
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -214,17 +213,20 @@ func destinationCompatible(p, c model.Span) bool {
 	return pd == cd || strings.HasPrefix(cd, pd+":") || strings.HasPrefix(pd, cd+":")
 }
 func routeLookupKey(s model.Span) string {
-	if s.System() == "" || s.Destination() == "" {
+	sys := s.System()
+	dest := s.Destination()
+	if sys == "" || dest == "" {
 		return ""
 	}
-	destination := s.Destination()
-	if strings.EqualFold(s.System(), "rabbitmq") {
-		destination = strings.Split(destination, ":")[0]
+	if strings.EqualFold(sys, "rabbitmq") {
+		if idx := strings.IndexByte(dest, ':'); idx != -1 {
+			dest = dest[:idx]
+		}
 	}
-	return strings.Join([]string{strings.ToLower(s.System()), destination}, "\x00")
+	return strings.ToLower(sys) + "\x00" + dest
 }
 func validParentContext(span model.Span) bool {
-	return len(span.TraceID) == 32 && len(span.ParentSpanID) == 16 && strings.Trim(span.TraceID, "0") != "" && strings.Trim(span.ParentSpanID, "0") != ""
+	return span.HasValidParentContext()
 }
 func delta(p, c model.Span) time.Duration {
 	d := c.Start.Sub(p.End)
@@ -233,7 +235,7 @@ func delta(p, c model.Span) time.Duration {
 	}
 	return d
 }
-func key(t, s string) string { return fmt.Sprintf("%s/%s", t, s) }
+func key(t, s string) string { return t + "/" + s }
 func sortedKeys(m map[int]bool) []int {
 	out := make([]int, 0, len(m))
 	for k := range m {
