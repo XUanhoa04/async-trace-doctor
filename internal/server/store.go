@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
@@ -235,10 +236,27 @@ func estimateSpanBytes(span model.Span) int64 {
 func estimateMapBytes(values map[string]any) int64 {
 	var n int64
 	for key, value := range values {
-		if value != nil {
-			n += int64(64 + len(key) + len(fmt.Sprint(value)))
-		} else {
-			n += int64(64 + len(key))
+		n += int64(64 + len(key))
+		if value == nil {
+			continue
+		}
+		switch v := value.(type) {
+		case string:
+			n += int64(len(v))
+		case bool:
+			n += 5
+		case int, int32, uint32:
+			n += 10
+		case int64, uint64:
+			n += 12
+		case float32, float64:
+			n += 12
+		case []byte:
+			n += int64(len(v))
+		case json.Number:
+			n += int64(len(v))
+		default:
+			n += int64(len(fmt.Sprint(value)))
 		}
 	}
 	return n

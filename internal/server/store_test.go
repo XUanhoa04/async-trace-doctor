@@ -48,6 +48,37 @@ func TestStoreRejectsMemoryBeforeSpanCapacity(t *testing.T) {
 	}
 }
 
+func TestStoreStatsAndByteEstimation(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	s := NewStore(10, time.Minute, NewMetrics(reg))
+	now := time.Now().UTC()
+	span := model.Span{
+		TraceID: "0123456789abcdef0123456789abcdef",
+		SpanID:  "0123456789abcdef",
+		Name:    "process",
+		End:     now,
+		Attributes: map[string]any{
+			"str_key":   "hello",
+			"int_key":   100,
+			"int64_key": int64(200),
+			"bool_key":  true,
+			"float_key": 3.14,
+			"nil_key":   nil,
+		},
+	}
+	res := s.Add([]model.Span{span})
+	if res.Accepted != 1 {
+		t.Fatalf("expected 1 accepted span, got: %#v", res)
+	}
+	if s.CurrentBytes() <= 0 {
+		t.Errorf("expected CurrentBytes > 0, got: %d", s.CurrentBytes())
+	}
+	stats := s.Stats()
+	if stats.RejectedSpans != 0 || stats.DuplicateExports != 0 {
+		t.Errorf("expected clean stats, got: %#v", stats)
+	}
+}
+
 func BenchmarkStoreAddWithDuplicates(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := NewStore(2, time.Hour, NewMetrics(prometheus.NewRegistry()), 1<<20)
