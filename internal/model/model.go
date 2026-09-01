@@ -17,10 +17,10 @@ type Link struct {
 }
 
 func (l Link) HasValidContext() bool {
-	return len(l.TraceID) == 32 && len(l.SpanID) == 16 && strings.Trim(l.TraceID, "0") != "" && strings.Trim(l.SpanID, "0") != "" && isHex(l.TraceID) && isHex(l.SpanID)
+	return HasValidTraceID(l.TraceID) && HasValidSpanID(l.SpanID)
 }
 
-func isHex(s string) bool {
+func IsHex(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
@@ -28,6 +28,18 @@ func isHex(s string) bool {
 		}
 	}
 	return true
+}
+
+func isHex(s string) bool {
+	return IsHex(s)
+}
+
+func HasValidTraceID(s string) bool {
+	return len(s) == 32 && strings.Trim(s, "0") != "" && IsHex(s)
+}
+
+func HasValidSpanID(s string) bool {
+	return len(s) == 16 && strings.Trim(s, "0") != "" && IsHex(s)
 }
 
 func (l Link) AttrString(key string) string {
@@ -54,6 +66,21 @@ type Span struct {
 	Flags                  uint32         `json:"flags,omitempty"`
 	DroppedAttributesCount uint32         `json:"dropped_attributes_count,omitempty"`
 	DroppedLinksCount      uint32         `json:"dropped_links_count,omitempty"`
+}
+
+func (s Span) HasValidContext() bool {
+	return HasValidTraceID(s.TraceID) && HasValidSpanID(s.SpanID)
+}
+
+func (s Span) HasValidParentContext() bool {
+	return HasValidTraceID(s.TraceID) && HasValidSpanID(s.ParentSpanID)
+}
+
+func (s Span) Duration() time.Duration {
+	if s.Start.IsZero() || s.End.IsZero() || s.End.Before(s.Start) {
+		return 0
+	}
+	return s.End.Sub(s.Start)
 }
 
 func (s Span) AttrString(key string) string {

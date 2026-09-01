@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestSortFindingsUsesStablePrecomputedKeys(t *testing.T) {
@@ -153,6 +154,70 @@ func TestSpanHelpers(t *testing.T) {
 	}
 	if !s2.Failed() {
 		t.Errorf("expected s2.Failed() to be true")
+	}
+}
+
+func TestSpanValidationAndDuration(t *testing.T) {
+	now := time.Now()
+	s := Span{
+		TraceID:      "0123456789abcdef0123456789abcdef",
+		SpanID:       "0123456789abcdef",
+		ParentSpanID: "fedcba9876543210",
+		Start:        now,
+		End:          now.Add(250 * time.Millisecond),
+	}
+	if !s.HasValidContext() {
+		t.Errorf("expected span to have valid context")
+	}
+	if !s.HasValidParentContext() {
+		t.Errorf("expected span to have valid parent context")
+	}
+	if d := s.Duration(); d != 250*time.Millisecond {
+		t.Errorf("span.Duration() = %v, want 250ms", d)
+	}
+
+	invalidSpan := Span{
+		TraceID:      "invalid-trace-id",
+		SpanID:       "invalid-span-id",
+		ParentSpanID: "0000000000000000",
+		Start:        now.Add(time.Second),
+		End:          now, // end before start
+	}
+	if invalidSpan.HasValidContext() {
+		t.Errorf("expected invalid context for invalid span")
+	}
+	if invalidSpan.HasValidParentContext() {
+		t.Errorf("expected invalid parent context for zero parent span ID")
+	}
+	if d := invalidSpan.Duration(); d != 0 {
+		t.Errorf("expected duration 0 for end before start, got %v", d)
+	}
+}
+
+func TestHexAndIDHelpers(t *testing.T) {
+	if !IsHex("0123456789abcdefABCDEF") {
+		t.Errorf("expected valid hex")
+	}
+	if IsHex("0123456789abcdefg") {
+		t.Errorf("expected non-hex to fail")
+	}
+	if !HasValidTraceID("0123456789abcdef0123456789abcdef") {
+		t.Errorf("expected valid trace ID")
+	}
+	if HasValidTraceID("00000000000000000000000000000000") {
+		t.Errorf("expected all zero trace ID to fail")
+	}
+	if HasValidTraceID("0123456789abcdef") {
+		t.Errorf("expected short trace ID to fail")
+	}
+	if !HasValidSpanID("0123456789abcdef") {
+		t.Errorf("expected valid span ID")
+	}
+	if HasValidSpanID("0000000000000000") {
+		t.Errorf("expected all zero span ID to fail")
+	}
+	if HasValidSpanID("0123456789abcdef0123456789abcdef") {
+		t.Errorf("expected long span ID to fail")
 	}
 }
 
