@@ -191,7 +191,8 @@ func nearestRouteCandidates(indices []int, spans []model.Span, consumer model.Sp
 	return out
 }
 func compatible(p, c model.Span) bool {
-	return p.System() != "" && p.System() == c.System() && destinationCompatible(p, c) && scopeCompatible(p, c)
+	pSys := p.System()
+	return pSys != "" && pSys == c.System() && destinationCompatible(pSys, p, c) && scopeCompatible(p, c)
 }
 func strongScopeCompatible(p, c model.Span) bool {
 	// Exact context is causal evidence, but it must not bridge two explicitly
@@ -202,12 +203,12 @@ func scopeCompatible(p, c model.Span) bool {
 	return optionalEqual(p.Environment(), c.Environment()) && optionalEqual(p.ServiceNamespace(), c.ServiceNamespace()) && optionalEqual(p.DestinationNamespace(), c.DestinationNamespace()) && optionalEqual(p.ServerAddress(), c.ServerAddress())
 }
 func optionalEqual(a, b string) bool { return a == "" || b == "" || a == b }
-func destinationCompatible(p, c model.Span) bool {
+func destinationCompatible(system string, p, c model.Span) bool {
 	pd, cd := p.Destination(), c.Destination()
 	if pd == "" || cd == "" {
 		return false
 	}
-	if !strings.EqualFold(p.System(), "rabbitmq") {
+	if !strings.EqualFold(system, "rabbitmq") {
 		return pd == cd && optionalEqual(p.Partition(), c.Partition())
 	}
 	return pd == cd || strings.HasPrefix(cd, pd+":") || strings.HasPrefix(pd, cd+":")

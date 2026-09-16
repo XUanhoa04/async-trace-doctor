@@ -189,3 +189,34 @@ func TestRouteLookupKeyAndKeyHelper(t *testing.T) {
 		t.Errorf("routeLookupKey(rabbitmq no colon) = %q, want %q", got, "rabbitmq\x00direct-queue")
 	}
 }
+
+func TestCompatibleAndDestinationCompatible(t *testing.T) {
+	now := time.Now()
+	pKafka := model.Span{
+		TraceID: "11111111111111111111111111111111", SpanID: "1111111111111111",
+		Kind: "PRODUCER", Start: now, End: now.Add(time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "kafka", "messaging.destination.name": "orders"},
+	}
+	cKafkaMismatch := model.Span{
+		TraceID: "22222222222222222222222222222222", SpanID: "2222222222222222",
+		Kind: "CONSUMER", Start: now.Add(time.Millisecond), End: now.Add(2 * time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "kafka", "messaging.destination.name": "payments"},
+	}
+	if compatible(pKafka, cKafkaMismatch) {
+		t.Errorf("expected kafka spans with different destinations to be incompatible")
+	}
+
+	pRabbit := model.Span{
+		TraceID: "33333333333333333333333333333333", SpanID: "3333333333333333",
+		Kind: "PRODUCER", Start: now, End: now.Add(time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "rabbitmq", "messaging.destination.name": "orders"},
+	}
+	cRabbitPrefixed := model.Span{
+		TraceID: "44444444444444444444444444444444", SpanID: "4444444444444444",
+		Kind: "CONSUMER", Start: now.Add(time.Millisecond), End: now.Add(2 * time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "rabbitmq", "messaging.destination.name": "orders:routing_key"},
+	}
+	if !compatible(pRabbit, cRabbitPrefixed) {
+		t.Errorf("expected rabbitmq spans with prefixed destination to be compatible")
+	}
+}
