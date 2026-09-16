@@ -215,3 +215,39 @@ func TestWriteMarkdownWithFindings(t *testing.T) {
 		t.Errorf("expected formatted markdown table row, got:\n%s", out)
 	}
 }
+
+func TestWriteMarkdownEscapesPipeInCellValues(t *testing.T) {
+	r := model.Report{
+		Summary: model.Summary{
+			AuditedSpans: 1,
+			Violations:   1,
+		},
+		Findings: []model.Finding{
+			{
+				RuleID:            "ATD-SEM-001",
+				Severity:          "error",
+				ProducerService:   "svc|a",
+				ConsumerService:   "svc|b",
+				MessagingSystem:   "kafka",
+				Destination:       "topic|x",
+				CorrelationMethod: "span_link",
+				Confidence:        model.ConfidenceHigh,
+				EvidenceState:     model.EvidenceSufficient,
+				Message:           "pipe | in message",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, r); err != nil {
+		t.Fatalf("WriteMarkdown error: %v", err)
+	}
+	out := buf.String()
+	// Raw pipe characters inside table cells must be escaped so the
+	// markdown renderer does not split them into additional columns.
+	if strings.Contains(out, "svc|a") || strings.Contains(out, "topic|x") {
+		t.Errorf("pipe characters were not escaped in markdown table:\n%s", out)
+	}
+	if !strings.Contains(out, `svc\|a`) || !strings.Contains(out, `topic\|x`) {
+		t.Errorf("expected escaped pipe characters, got:\n%s", out)
+	}
+}

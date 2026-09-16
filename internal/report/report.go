@@ -74,17 +74,17 @@ func WriteMarkdown(w io.Writer, r model.Report) error {
 		return err
 	}
 	for _, f := range r.Findings {
-		consumer := f.ConsumerService
+		consumer := escapePipe(f.ConsumerService)
 		if f.ConsumerGroup != "" {
-			consumer += "[" + f.ConsumerGroup + "]"
+			consumer += "[" + escapePipe(f.ConsumerGroup) + "]"
 		}
 		if f.Subscription != "" {
-			consumer += "{" + f.Subscription + "}"
+			consumer += "{" + escapePipe(f.Subscription) + "}"
 		}
-		edge := f.ProducerService + " &rarr; " + consumer
-		dest := f.MessagingSystem + "/" + f.Destination
+		edge := escapePipe(f.ProducerService) + " &rarr; " + consumer
+		dest := escapePipe(f.MessagingSystem) + "/" + escapePipe(f.Destination)
 		if _, err := fmt.Fprintf(w, "| `%s` | `%s` | %s | %s | %s | %s | %s | %s |\n",
-			strings.ToUpper(f.Severity), f.RuleID, edge, dest, f.CorrelationMethod, f.Confidence, f.EvidenceState, f.Message); err != nil {
+			strings.ToUpper(f.Severity), f.RuleID, edge, dest, escapePipe(f.CorrelationMethod), f.Confidence, f.EvidenceState, escapePipe(f.Message)); err != nil {
 			return err
 		}
 	}
@@ -103,4 +103,10 @@ func trim(s string, n int) string {
 		return string(runes[:n])
 	}
 	return string(runes[:n-1]) + "…"
+}
+
+// escapePipe replaces pipe characters with a backslash-escaped form so that
+// cell values do not break markdown table row delimiters.
+func escapePipe(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
 }
