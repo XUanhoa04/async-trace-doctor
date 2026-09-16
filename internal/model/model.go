@@ -149,6 +149,34 @@ func (s Span) MessageIdentity() (string, string) {
 	}
 	return "", ""
 }
+
+// AttrFloat64 extracts a floating-point attribute, handling json.Number and
+// int types that appear after JSON decoding. Returns (0, false) if the key
+// is missing or the value cannot be converted.
+func (s Span) AttrFloat64(key string) (float64, bool) {
+	v, ok := s.Attributes[key]
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	default:
+		var f float64
+		_, err := fmt.Sscan(fmt.Sprint(v), &f)
+		return f, err == nil
+	}
+}
+
 func (s Span) Failed() bool {
 	return strings.EqualFold(s.StatusCode, "ERROR") || s.AttrString("error.type") != ""
 }
@@ -162,6 +190,10 @@ const (
 	ConfidenceMedium Confidence = "medium"
 	ConfidenceLow    Confidence = "low"
 )
+
+// String implements fmt.Stringer so Confidence values render correctly
+// in structured logging (slog) and formatted output without explicit casts.
+func (c Confidence) String() string { return string(c) }
 
 type Correlation struct {
 	ProducerIndex int           `json:"-"`

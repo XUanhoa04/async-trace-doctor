@@ -221,6 +221,65 @@ func TestHexAndIDHelpers(t *testing.T) {
 	}
 }
 
+func TestConfidenceString(t *testing.T) {
+	for _, tc := range []struct {
+		c    Confidence
+		want string
+	}{
+		{ConfidenceHigh, "high"},
+		{ConfidenceMedium, "medium"},
+		{ConfidenceLow, "low"},
+	} {
+		if got := tc.c.String(); got != tc.want {
+			t.Errorf("Confidence.String() = %q, want %q", got, tc.want)
+		}
+		// Verify it integrates with fmt.Sprintf without explicit cast.
+		if got := fmt.Sprintf("%s", tc.c); got != tc.want {
+			t.Errorf("fmt.Sprintf(%%s, Confidence) = %q, want %q", got, tc.want)
+		}
+	}
+}
+
+func TestSpanAttrFloat64(t *testing.T) {
+	span := Span{
+		Attributes: map[string]any{
+			"float64":     float64(3.14),
+			"float32":     float32(2.71),
+			"int":         int(42),
+			"int64":       int64(100),
+			"json_number": json.Number("99.5"),
+			"string_num":  "1.23",
+			"invalid_str": "not-a-number",
+			"nil_val":     nil,
+		},
+	}
+	testCases := []struct {
+		key      string
+		expected float64
+		ok       bool
+	}{
+		{"float64", 3.14, true},
+		{"float32", 2.71, true},
+		{"int", 42, true},
+		{"int64", 100, true},
+		{"json_number", 99.5, true},
+		{"string_num", 1.23, true},
+		{"invalid_str", 0, false},
+		{"nil_val", 0, false},
+		{"missing", 0, false},
+	}
+	for _, tc := range testCases {
+		got, ok := span.AttrFloat64(tc.key)
+		if ok != tc.ok {
+			t.Errorf("AttrFloat64(%q) ok = %v, want %v", tc.key, ok, tc.ok)
+			continue
+		}
+		if ok && (got-tc.expected) > 0.01 {
+			t.Errorf("AttrFloat64(%q) = %v, want %v", tc.key, got, tc.expected)
+		}
+	}
+}
+
 func BenchmarkSortFindings(b *testing.B) {
 	template := make([]Finding, 1000)
 	for i := range template {
