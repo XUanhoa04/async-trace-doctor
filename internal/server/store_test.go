@@ -79,6 +79,22 @@ func TestStoreStatsAndByteEstimation(t *testing.T) {
 	}
 }
 
+func TestContentHashDistinguishesAttributeValues(t *testing.T) {
+	now := time.Now().UTC()
+	base := model.Span{TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa", Name: "send", End: now, Attributes: map[string]any{"key": "value-a"}}
+	other := base
+	other.Attributes = map[string]any{"key": "value-b"}
+	hashA := spanContentHash(base)
+	hashB := spanContentHash(other)
+	if hashA == hashB {
+		t.Errorf("content hash should differ when attribute values differ (both = %d)", hashA)
+	}
+	// Same data must produce identical hashes.
+	if hashA != spanContentHash(base) {
+		t.Errorf("content hash is not deterministic")
+	}
+}
+
 func BenchmarkStoreAddWithDuplicates(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		s := NewStore(2, time.Hour, NewMetrics(prometheus.NewRegistry()), 1<<20)

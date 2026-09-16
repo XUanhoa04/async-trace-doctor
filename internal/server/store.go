@@ -208,7 +208,7 @@ func spanContentHash(span model.Span) uint64 {
 	binary.LittleEndian.PutUint64(times[:8], uint64(span.Start.UnixNano()))
 	binary.LittleEndian.PutUint64(times[8:], uint64(span.End.UnixNano()))
 	_, _ = h.Write(times[:])
-	hashKeys := func(m map[string]any) {
+	hashMap := func(m map[string]any) {
 		keys := make([]string, 0, len(m))
 		for k := range m {
 			keys = append(keys, k)
@@ -217,10 +217,14 @@ func spanContentHash(span model.Span) uint64 {
 		for _, k := range keys {
 			_, _ = h.Write([]byte(k))
 			_, _ = h.Write([]byte{0})
+			// Include values to reduce false hash collisions that would
+			// otherwise require an expensive reflect.DeepEqual comparison.
+			_, _ = h.Write([]byte(fmt.Sprint(m[k])))
+			_, _ = h.Write([]byte{0})
 		}
 	}
-	hashKeys(span.Attributes)
-	hashKeys(span.ResourceAttributes)
+	hashMap(span.Attributes)
+	hashMap(span.ResourceAttributes)
 	return h.Sum64()
 }
 
