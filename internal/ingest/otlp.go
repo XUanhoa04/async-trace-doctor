@@ -232,7 +232,14 @@ func FromProto(resources []*tracev1.ResourceSpans, redact []string) []model.Span
 	for _, k := range redact {
 		redacted[k] = true
 	}
-	var out []model.Span
+	// Pre-compute total span count for a single allocation.
+	totalSpans := 0
+	for _, rs := range resources {
+		for _, ss := range rs.GetScopeSpans() {
+			totalSpans += len(ss.GetSpans())
+		}
+	}
+	out := make([]model.Span, 0, totalSpans)
 	for _, rs := range resources {
 		resourceAttrs := attrs(rs.GetResource().GetAttributes(), redacted)
 		service := stringAttr(resourceAttrs, "service.name")
@@ -243,11 +250,31 @@ func FromProto(resources []*tracev1.ResourceSpans, redact []string) []model.Span
 				for _, l := range s.GetLinks() {
 					links = append(links, model.Link{TraceID: hex.EncodeToString(l.GetTraceId()), SpanID: hex.EncodeToString(l.GetSpanId()), Attributes: attrs(l.GetAttributes(), redacted), Flags: l.GetFlags(), DroppedAttributesCount: l.GetDroppedAttributesCount()})
 				}
-				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: hex.EncodeToString(s.GetParentSpanId()), Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, ResourceAttributes: resourceAttrs, Links: links, StatusCode: statusCode(s.GetStatus().GetCode()), Flags: s.GetFlags(), DroppedAttributesCount: s.GetDroppedAttributesCount(), DroppedLinksCount: s.GetDroppedLinksCount()})
+				parentSpanID := encodeNonZeroHex(s.GetParentSpanId())
+				out = append(out, model.Span{TraceID: hex.EncodeToString(s.GetTraceId()), SpanID: hex.EncodeToString(s.GetSpanId()), ParentSpanID: parentSpanID, Name: s.GetName(), Kind: kind(s.GetKind()), Service: service, Start: time.Unix(0, int64(s.GetStartTimeUnixNano())).UTC(), End: time.Unix(0, int64(s.GetEndTimeUnixNano())).UTC(), Attributes: a, ResourceAttributes: resourceAttrs, Links: links, StatusCode: statusCode(s.GetStatus().GetCode()), Flags: s.GetFlags(), DroppedAttributesCount: s.GetDroppedAttributesCount(), DroppedLinksCount: s.GetDroppedLinksCount()})
 			}
 		}
 	}
 	return out
+}
+
+// encodeNonZeroHex hex-encodes the byte slice unless it is nil, empty, or
+// contains only zero bytes (all-zero parent span ID means "no parent").
+func encodeNonZeroHex(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	allZero := true
+	for _, v := range b {
+		if v != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
 
 func attrs(kvs []*commonv1.KeyValue, redacted map[string]bool) map[string]any {

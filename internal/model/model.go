@@ -30,10 +30,6 @@ func IsHex(s string) bool {
 	return true
 }
 
-func isHex(s string) bool {
-	return IsHex(s)
-}
-
 func HasValidTraceID(s string) bool {
 	return len(s) == 32 && strings.Trim(s, "0") != "" && IsHex(s)
 }

@@ -530,9 +530,6 @@ func matchesScope(values []string, actual string) bool {
 	}
 	return false
 }
-func allZeroHex(value string) bool {
-	return value != "" && strings.Trim(value, "0") == ""
-}
 func timestampMissing(value time.Time) bool {
 	return value.IsZero() || value.Equal(time.Unix(0, 0).UTC())
 }
