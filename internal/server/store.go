@@ -60,6 +60,13 @@ func NewStore(max int, ttl time.Duration, m *Metrics, maxBytes ...int64) *Store 
 	return &Store{max: max, maxBytes: byteLimit, ttl: ttl, metrics: m, index: map[string]storeEntry{}}
 }
 
+// SetLogger configures structured logging for admission and eviction events.
+func (s *Store) SetLogger(logger *slog.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logger = logger
+}
+
 func (s *Store) Add(in []model.Span) AddResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()

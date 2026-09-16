@@ -71,7 +71,7 @@ func New(cfg config.Config, opts Options, reg *prometheus.Registry) *Service {
 		opts.StartupProbePath = "/startup"
 	}
 	store := NewStore(opts.MaxSpans, opts.TTL, m, opts.MaxRetainedBytes)
-	store.logger = logger
+	store.SetLogger(logger)
 	return &Service{cfg: cfg, engine: rules.Engine{Config: cfg}, store: store, metrics: m, opts: opts, logger: logger}
 }
 

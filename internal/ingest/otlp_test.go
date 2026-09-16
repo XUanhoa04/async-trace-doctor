@@ -257,6 +257,22 @@ func TestDedupContentHashDifferences(t *testing.T) {
 	}
 }
 
+func TestEncodeNonZeroHex(t *testing.T) {
+	if got := encodeNonZeroHex(nil); got != "" {
+		t.Errorf("nil input = %q, want empty", got)
+	}
+	if got := encodeNonZeroHex([]byte{}); got != "" {
+		t.Errorf("empty input = %q, want empty", got)
+	}
+	if got := encodeNonZeroHex(make([]byte, 8)); got != "" {
+		t.Errorf("all-zero bytes = %q, want empty", got)
+	}
+	validID := []byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}
+	if got := encodeNonZeroHex(validID); got != "0123456789abcdef" {
+		t.Errorf("valid bytes = %q, want %q", got, "0123456789abcdef")
+	}
+}
+
 func BenchmarkDeduplicateSpans(b *testing.B) {
 	spans := make([]model.Span, 10000)
 	for i := range spans {
