@@ -192,7 +192,7 @@ func nearestRouteCandidates(indices []int, spans []model.Span, consumer model.Sp
 }
 func compatible(p, c model.Span) bool {
 	pSys := p.System()
-	return pSys != "" && pSys == c.System() && destinationCompatible(pSys, p, c) && scopeCompatible(p, c)
+	return pSys != "" && strings.EqualFold(pSys, c.System()) && destinationCompatible(pSys, p, c) && scopeCompatible(p, c)
 }
 func strongScopeCompatible(p, c model.Span) bool {
 	// Exact context is causal evidence, but it must not bridge two explicitly

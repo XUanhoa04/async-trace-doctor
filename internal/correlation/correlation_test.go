@@ -219,4 +219,46 @@ func TestCompatibleAndDestinationCompatible(t *testing.T) {
 	if !compatible(pRabbit, cRabbitPrefixed) {
 		t.Errorf("expected rabbitmq spans with prefixed destination to be compatible")
 	}
+
+	pKafkaCase := model.Span{
+		TraceID: "55555555555555555555555555555555", SpanID: "5555555555555555",
+		Kind: "PRODUCER", Start: now, End: now.Add(time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "Kafka", "messaging.destination.name": "orders"},
+	}
+	cKafkaCase := model.Span{
+		TraceID: "66666666666666666666666666666666", SpanID: "6666666666666666",
+		Kind: "CONSUMER", Start: now.Add(time.Millisecond), End: now.Add(2 * time.Millisecond),
+		Attributes: map[string]any{"messaging.system": "kafka", "messaging.destination.name": "orders"},
+	}
+	if !compatible(pKafkaCase, cKafkaCase) {
+		t.Errorf("expected kafka spans with case-varying messaging.system to be compatible")
+	}
+}
+
+func TestCaseInsensitiveSystemCorrelation(t *testing.T) {
+	now := time.Now()
+	p := model.Span{
+		TraceID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SpanID: "aaaaaaaaaaaaaaaa",
+		Kind: "PRODUCER", Start: now, End: now,
+		Attributes: map[string]any{
+			"messaging.system":           "Kafka",
+			"messaging.operation.type":   "send",
+			"messaging.destination.name": "orders",
+			"messaging.message.id":       "order-xyz",
+		},
+	}
+	c := model.Span{
+		TraceID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SpanID: "bbbbbbbbbbbbbbbb",
+		Kind: "CONSUMER", Start: now.Add(time.Second), End: now.Add(2 * time.Second),
+		Attributes: map[string]any{
+			"messaging.system":           "kafka",
+			"messaging.operation.type":   "process",
+			"messaging.destination.name": "orders",
+			"messaging.message.id":       "order-xyz",
+		},
+	}
+	r := Correlate([]model.Span{p, c}, time.Minute)
+	if len(r.Correlations) != 1 || r.Correlations[0].Method != model.MethodMessagingAttrs {
+		t.Fatalf("case-insensitive messaging system spans failed to correlate: %#v", r.Correlations)
+	}
 }
