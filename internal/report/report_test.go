@@ -251,3 +251,47 @@ func TestWriteMarkdownEscapesPipeInCellValues(t *testing.T) {
 		t.Errorf("expected escaped pipe characters, got:\n%s", out)
 	}
 }
+
+func TestWriteMarkdownEscapesNewlinesInCellValues(t *testing.T) {
+	r := model.Report{
+		Summary: model.Summary{AuditedSpans: 1, Violations: 1},
+		Findings: []model.Finding{
+			{
+				RuleID:            "ATD-BAT-001",
+				Severity:          "error",
+				ProducerService:   "producer",
+				ConsumerService:   "consumer",
+				MessagingSystem:   "kafka",
+				Destination:       "orders",
+				CorrelationMethod: "span_link",
+				Confidence:        model.ConfidenceHigh,
+				EvidenceState:     model.EvidenceSufficient,
+				Message:           "Batch incomplete:\nFirst error\r\nSecond error",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, r); err != nil {
+		t.Fatalf("WriteMarkdown error: %v", err)
+	}
+	out := buf.String()
+	// Must not contain raw newlines inside the row that break table structure
+	if strings.Contains(out, "Batch incomplete:\n") {
+		t.Errorf("raw newline was not converted to <br/> in markdown:\n%s", out)
+	}
+	if !strings.Contains(out, "Batch incomplete:<br/>First error<br/>Second error") {
+		t.Errorf("expected <br/> in place of newlines, got:\n%s", out)
+	}
+
+	var tableBuf bytes.Buffer
+	if err := WriteTable(&tableBuf, r); err != nil {
+		t.Fatalf("WriteTable error: %v", err)
+	}
+	tableOut := tableBuf.String()
+	if strings.Contains(tableOut, "Batch incomplete:\n") {
+		t.Errorf("raw newline was not converted to space in table output:\n%s", tableOut)
+	}
+	if !strings.Contains(tableOut, "Batch incomplete: First error Second error") {
+		t.Errorf("expected spaces replacing newlines in table output, got:\n%s", tableOut)
+	}
+}

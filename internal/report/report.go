@@ -41,7 +41,8 @@ func WriteTable(w io.Writer, r model.Report) error {
 		edge := trim(f.ProducerService+" -> "+consumer, 42)
 		dest := trim(f.MessagingSystem+"/"+f.Destination, 24)
 		method := trim(f.CorrelationMethod, 22)
-		if _, err := fmt.Fprintf(w, "%-9s %-13s %-42s %-24s %-22s %-5s %-13s %s\n", strings.ToUpper(f.Severity), f.RuleID, edge, dest, method, f.Confidence, f.EvidenceState, f.Message); err != nil {
+		msg := strings.ReplaceAll(strings.ReplaceAll(f.Message, "\r\n", " "), "\n", " ")
+		if _, err := fmt.Fprintf(w, "%-9s %-13s %-42s %-24s %-22s %-5s %-13s %s\n", strings.ToUpper(f.Severity), f.RuleID, edge, dest, method, f.Confidence, f.EvidenceState, msg); err != nil {
 			return err
 		}
 	}
@@ -74,17 +75,17 @@ func WriteMarkdown(w io.Writer, r model.Report) error {
 		return err
 	}
 	for _, f := range r.Findings {
-		consumer := escapePipe(f.ConsumerService)
+		consumer := escapeMarkdownCell(f.ConsumerService)
 		if f.ConsumerGroup != "" {
-			consumer += "[" + escapePipe(f.ConsumerGroup) + "]"
+			consumer += "[" + escapeMarkdownCell(f.ConsumerGroup) + "]"
 		}
 		if f.Subscription != "" {
-			consumer += "{" + escapePipe(f.Subscription) + "}"
+			consumer += "{" + escapeMarkdownCell(f.Subscription) + "}"
 		}
-		edge := escapePipe(f.ProducerService) + " &rarr; " + consumer
-		dest := escapePipe(f.MessagingSystem) + "/" + escapePipe(f.Destination)
+		edge := escapeMarkdownCell(f.ProducerService) + " &rarr; " + consumer
+		dest := escapeMarkdownCell(f.MessagingSystem) + "/" + escapeMarkdownCell(f.Destination)
 		if _, err := fmt.Fprintf(w, "| `%s` | `%s` | %s | %s | %s | %s | %s | %s |\n",
-			strings.ToUpper(f.Severity), f.RuleID, edge, dest, escapePipe(f.CorrelationMethod), f.Confidence, f.EvidenceState, escapePipe(f.Message)); err != nil {
+			strings.ToUpper(f.Severity), f.RuleID, edge, dest, escapeMarkdownCell(f.CorrelationMethod), f.Confidence, f.EvidenceState, escapeMarkdownCell(f.Message)); err != nil {
 			return err
 		}
 	}
@@ -105,8 +106,17 @@ func trim(s string, n int) string {
 	return string(runes[:n-1]) + "…"
 }
 
-// escapePipe replaces pipe characters with a backslash-escaped form so that
-// cell values do not break markdown table row delimiters.
+// escapeMarkdownCell replaces pipe characters and newlines with safe markdown representations
+// so that cell values do not break table columns or row delimiters.
+func escapeMarkdownCell(s string) string {
+	s = strings.ReplaceAll(s, "|", "\\|")
+	s = strings.ReplaceAll(s, "\r\n", "<br/>")
+	s = strings.ReplaceAll(s, "\n", "<br/>")
+	s = strings.ReplaceAll(s, "\r", "<br/>")
+	return s
+}
+
+// escapePipe is maintained for backward compatibility.
 func escapePipe(s string) string {
-	return strings.ReplaceAll(s, "|", "\\|")
+	return escapeMarkdownCell(s)
 }
