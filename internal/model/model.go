@@ -46,6 +46,38 @@ func (l Link) AttrString(key string) string {
 	return fmt.Sprint(v)
 }
 
+func (l Link) AttrInt(key string) (int, bool) {
+	v, ok := l.Attributes[key]
+	if !ok {
+		return 0, false
+	}
+	return toInt(v)
+}
+
+func (l Link) AttrInt64(key string) (int64, bool) {
+	v, ok := l.Attributes[key]
+	if !ok {
+		return 0, false
+	}
+	return toInt64(v)
+}
+
+func (l Link) AttrFloat64(key string) (float64, bool) {
+	v, ok := l.Attributes[key]
+	if !ok {
+		return 0, false
+	}
+	return toFloat64(v)
+}
+
+func (l Link) AttrBool(key string) (bool, bool) {
+	v, ok := l.Attributes[key]
+	if !ok {
+		return false, false
+	}
+	return toBool(v)
+}
+
 type Span struct {
 	TraceID                string         `json:"trace_id"`
 	SpanID                 string         `json:"span_id"`
@@ -100,21 +132,25 @@ func (s Span) AttrInt(key string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case int64:
-		return int(n), true
-	case float64:
-		return int(n), true
-	case json.Number:
-		i, err := n.Int64()
-		return int(i), err == nil
-	default:
-		var i int
-		_, err := fmt.Sscan(fmt.Sprint(v), &i)
-		return i, err == nil
+	return toInt(v)
+}
+
+// AttrInt64 extracts a 64-bit integer attribute, supporting full offset and size ranges.
+func (s Span) AttrInt64(key string) (int64, bool) {
+	v, ok := s.Attributes[key]
+	if !ok {
+		return 0, false
 	}
+	return toInt64(v)
+}
+
+// AttrBool extracts a boolean attribute from boolean, string, or integer representations.
+func (s Span) AttrBool(key string) (bool, bool) {
+	v, ok := s.Attributes[key]
+	if !ok {
+		return false, false
+	}
+	return toBool(v)
 }
 
 func (s Span) Operation() string   { return strings.ToLower(s.AttrString("messaging.operation.type")) }
@@ -158,6 +194,82 @@ func (s Span) AttrFloat64(key string) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
+	return toFloat64(v)
+}
+
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case int32:
+		return int(n), true
+	case int16:
+		return int(n), true
+	case int8:
+		return int(n), true
+	case uint:
+		return int(n), true
+	case uint64:
+		return int(n), true
+	case uint32:
+		return int(n), true
+	case uint16:
+		return int(n), true
+	case uint8:
+		return int(n), true
+	case float64:
+		return int(n), true
+	case float32:
+		return int(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return int(i), err == nil
+	default:
+		var i int
+		_, err := fmt.Sscan(fmt.Sprint(v), &i)
+		return i, err == nil
+	}
+}
+
+func toInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case int16:
+		return int64(n), true
+	case int8:
+		return int64(n), true
+	case uint64:
+		return int64(n), true
+	case uint:
+		return int64(n), true
+	case uint32:
+		return int64(n), true
+	case uint16:
+		return int64(n), true
+	case uint8:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	case float32:
+		return int64(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return i, err == nil
+	default:
+		var i int64
+		_, err := fmt.Sscan(fmt.Sprint(v), &i)
+		return i, err == nil
+	}
+}
+
+func toFloat64(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		return n, true
@@ -167,6 +279,12 @@ func (s Span) AttrFloat64(key string) (float64, bool) {
 		return float64(n), true
 	case int64:
 		return float64(n), true
+	case int32:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
 	case json.Number:
 		f, err := n.Float64()
 		return f, err == nil
@@ -174,6 +292,28 @@ func (s Span) AttrFloat64(key string) (float64, bool) {
 		var f float64
 		_, err := fmt.Sscan(fmt.Sprint(v), &f)
 		return f, err == nil
+	}
+}
+
+func toBool(v any) (bool, bool) {
+	switch b := v.(type) {
+	case bool:
+		return b, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(b)) {
+		case "true", "1", "t", "yes":
+			return true, true
+		case "false", "0", "f", "no":
+			return false, true
+		default:
+			return false, false
+		}
+	case int:
+		return b != 0, true
+	case int64:
+		return b != 0, true
+	default:
+		return false, false
 	}
 }
 

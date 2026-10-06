@@ -280,6 +280,73 @@ func TestSpanAttrFloat64(t *testing.T) {
 	}
 }
 
+func TestSpanAttrInt64AndBool(t *testing.T) {
+	span := Span{
+		Attributes: map[string]any{
+			"int64_large": int64(9223372036854775807),
+			"int32_val":   int32(123456),
+			"uint_val":    uint(789),
+			"bool_true":   true,
+			"bool_false":  false,
+			"str_true":    "true",
+			"str_false":   "false",
+			"int_bool":    1,
+			"nil_val":     nil,
+		},
+	}
+
+	if val, ok := span.AttrInt64("int64_large"); !ok || val != 9223372036854775807 {
+		t.Errorf("AttrInt64(int64_large) = (%v, %v), want (9223372036854775807, true)", val, ok)
+	}
+	if val, ok := span.AttrInt64("int32_val"); !ok || val != 123456 {
+		t.Errorf("AttrInt64(int32_val) = (%v, %v), want (123456, true)", val, ok)
+	}
+	if val, ok := span.AttrInt("uint_val"); !ok || val != 789 {
+		t.Errorf("AttrInt(uint_val) = (%v, %v), want (789, true)", val, ok)
+	}
+	if val, ok := span.AttrBool("bool_true"); !ok || !val {
+		t.Errorf("AttrBool(bool_true) = (%v, %v), want (true, true)", val, ok)
+	}
+	if val, ok := span.AttrBool("str_false"); !ok || val {
+		t.Errorf("AttrBool(str_false) = (%v, %v), want (false, true)", val, ok)
+	}
+	if val, ok := span.AttrBool("int_bool"); !ok || !val {
+		t.Errorf("AttrBool(int_bool) = (%v, %v), want (true, true)", val, ok)
+	}
+	if _, ok := span.AttrBool("nil_val"); ok {
+		t.Errorf("AttrBool(nil_val) ok = true, want false")
+	}
+	if _, ok := span.AttrBool("missing"); ok {
+		t.Errorf("AttrBool(missing) ok = true, want false")
+	}
+}
+
+func TestLinkAttrAccessors(t *testing.T) {
+	link := Link{
+		Attributes: map[string]any{
+			"messaging.message.body.size": int64(1024),
+			"messaging.batch.count":       10,
+			"rate":                        float64(45.5),
+			"is_retry":                    true,
+		},
+	}
+	if val, ok := link.AttrInt64("messaging.message.body.size"); !ok || val != 1024 {
+		t.Errorf("link.AttrInt64() = (%v, %v), want (1024, true)", val, ok)
+	}
+	if val, ok := link.AttrInt("messaging.batch.count"); !ok || val != 10 {
+		t.Errorf("link.AttrInt() = (%v, %v), want (10, true)", val, ok)
+	}
+	if val, ok := link.AttrFloat64("rate"); !ok || val != 45.5 {
+		t.Errorf("link.AttrFloat64() = (%v, %v), want (45.5, true)", val, ok)
+	}
+	if val, ok := link.AttrBool("is_retry"); !ok || !val {
+		t.Errorf("link.AttrBool() = (%v, %v), want (true, true)", val, ok)
+	}
+	if _, ok := link.AttrInt("missing"); ok {
+		t.Errorf("link.AttrInt(missing) ok = true, want false")
+	}
+}
+
 func BenchmarkSortFindings(b *testing.B) {
 	template := make([]Finding, 1000)
 	for i := range template {
