@@ -330,6 +330,22 @@ func TestRuleApplicabilityCanScopeBySystemAndEnvironment(t *testing.T) {
 	assertNoRule(t, Engine{Config: cfg}.Audit([]model.Span{c}), "ATD-CTX-001")
 }
 
+func TestCaseInsensitiveRuleScopeApplicability(t *testing.T) {
+	cfg := testConfig(t)
+	for i := range cfg.Rules {
+		if cfg.Rules[i].ID == "ATD-CTX-001" {
+			cfg.Rules[i].AppliesTo.Systems = []string{"KAFKA"}
+			cfg.Rules[i].AppliesTo.Operations = []string{"PROCESS"}
+		}
+	}
+	now := time.Now()
+	c := messagingSpan("c", "consumer", "process", now, now.Add(time.Second))
+	report := Engine{Config: cfg}.Audit([]model.Span{c})
+	if findRule(report, "ATD-CTX-001") == nil {
+		t.Fatalf("case-insensitive scope should trigger ATD-CTX-001: %#v", report.Findings)
+	}
+}
+
 func TestInvalidIdentityAndTimestampsAreExplicitFindings(t *testing.T) {
 	cfg := testConfig(t)
 	span := messagingSpan("bad", "producer", "send", time.Time{}, time.Time{})

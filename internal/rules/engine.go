@@ -513,8 +513,8 @@ func expectedKinds(op string) []string {
 	}
 }
 func applies(r config.Rule, s model.Span) bool {
-	return matchesScope(r.AppliesTo.Operations, s.Operation()) &&
-		matchesScope(r.AppliesTo.Systems, s.System()) &&
+	return matchesScopeFold(r.AppliesTo.Operations, s.Operation()) &&
+		matchesScopeFold(r.AppliesTo.Systems, s.System()) &&
 		matchesScope(r.AppliesTo.Services, s.Service) &&
 		matchesScope(r.AppliesTo.Destinations, s.Destination()) &&
 		matchesScope(r.AppliesTo.Environments, s.Environment())
@@ -525,6 +525,17 @@ func matchesScope(values []string, actual string) bool {
 	}
 	for _, value := range values {
 		if value == "*" || value == actual {
+			return true
+		}
+	}
+	return false
+}
+func matchesScopeFold(values []string, actual string) bool {
+	if len(values) == 0 {
+		return true
+	}
+	for _, value := range values {
+		if value == "*" || strings.EqualFold(value, actual) {
 			return true
 		}
 	}
