@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -106,10 +107,33 @@ func deduplicateSpans(spans []model.Span) ([]model.Span, error) {
 
 func dedupContentHash(span model.Span) uint64 {
 	h := fnv.New64a()
-	for _, field := range []string{span.TraceID, span.SpanID, span.ParentSpanID, span.Name, span.Kind, span.Service, span.Start.UTC().Format(time.RFC3339Nano), span.End.UTC().Format(time.RFC3339Nano), span.StatusCode} {
+	for _, field := range []string{span.TraceID, span.SpanID, span.ParentSpanID, span.Name, span.Kind, span.Service, span.StatusCode} {
 		_, _ = h.Write([]byte(field))
 		_, _ = h.Write([]byte{0})
 	}
+	var times [16]byte
+	binary.LittleEndian.PutUint64(times[:8], uint64(span.Start.UnixNano()))
+	binary.LittleEndian.PutUint64(times[8:], uint64(span.End.UnixNano()))
+	_, _ = h.Write(times[:])
+
+	hashMap := func(m map[string]any) {
+		if len(m) == 0 {
+			return
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, _ = h.Write([]byte(k))
+			_, _ = h.Write([]byte{0})
+			_, _ = h.Write([]byte(fmt.Sprint(m[k])))
+			_, _ = h.Write([]byte{0})
+		}
+	}
+	hashMap(span.Attributes)
+	hashMap(span.ResourceAttributes)
 	return h.Sum64()
 }
 

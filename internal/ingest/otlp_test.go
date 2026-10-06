@@ -77,6 +77,33 @@ func TestOfflineInputDeduplicatesAndRejectsConflictingIdentity(t *testing.T) {
 	}
 }
 
+func TestDedupContentHashDistinguishesAttributes(t *testing.T) {
+	now := time.Now().UTC()
+	s1 := model.Span{
+		TraceID:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		SpanID:     "aaaaaaaaaaaaaaaa",
+		Start:      now,
+		End:        now.Add(time.Second),
+		Attributes: map[string]any{"messaging.system": "kafka", "partition": 1},
+	}
+	s2 := model.Span{
+		TraceID:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		SpanID:     "aaaaaaaaaaaaaaaa",
+		Start:      now,
+		End:        now.Add(time.Second),
+		Attributes: map[string]any{"messaging.system": "kafka", "partition": 2},
+	}
+	h1 := dedupContentHash(s1)
+	h2 := dedupContentHash(s2)
+	if h1 == h2 {
+		t.Fatalf("hashes should differ when attributes differ: %d == %d", h1, h2)
+	}
+
+	if _, err := deduplicateSpans([]model.Span{s1, s2}); err == nil {
+		t.Fatal("expected conflict error when spans share identity but have different attributes")
+	}
+}
+
 func TestDecodeJSONRejectsMalformedIDs(t *testing.T) {
 	for _, tc := range []struct{ name, traceID string }{
 		{name: "odd length", traceID: strings.Repeat("a", 31)},
