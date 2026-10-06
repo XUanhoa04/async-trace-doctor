@@ -372,6 +372,42 @@ type Finding struct {
 	SuggestedFix      string         `json:"suggested_fix"`
 }
 
+// Fingerprint returns a canonical deduplication key representing this finding's identity.
+// It joins the rule ID, trace IDs, span IDs, services, messaging system, destination,
+// consumer group, and subscription using pipe delimiters.
+func (f Finding) Fingerprint() string {
+	var b strings.Builder
+	b.Grow(len(f.RuleID) + len(f.ProducerService) + len(f.ConsumerService) + len(f.MessagingSystem) + len(f.Destination) + len(f.ConsumerGroup) + len(f.Subscription) + 64)
+	b.WriteString(f.RuleID)
+	b.WriteByte('|')
+	for i, id := range f.TraceIDs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(id)
+	}
+	b.WriteByte('|')
+	for i, id := range f.SpanIDs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(id)
+	}
+	b.WriteByte('|')
+	b.WriteString(f.ProducerService)
+	b.WriteByte('|')
+	b.WriteString(f.ConsumerService)
+	b.WriteByte('|')
+	b.WriteString(f.MessagingSystem)
+	b.WriteByte('|')
+	b.WriteString(f.Destination)
+	b.WriteByte('|')
+	b.WriteString(f.ConsumerGroup)
+	b.WriteByte('|')
+	b.WriteString(f.Subscription)
+	return b.String()
+}
+
 const (
 	EvidenceSufficient   = "sufficient"
 	EvidenceInsufficient = "insufficient"

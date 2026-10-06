@@ -347,6 +347,34 @@ func TestLinkAttrAccessors(t *testing.T) {
 	}
 }
 
+func TestFindingFingerprint(t *testing.T) {
+	f := Finding{
+		RuleID:          "ATD-CTX-001",
+		TraceIDs:        []string{"t1", "t2"},
+		SpanIDs:         []string{"s1", "s2"},
+		ProducerService: "checkout",
+		ConsumerService: "fraud",
+		MessagingSystem: "kafka",
+		Destination:     "orders",
+		ConsumerGroup:   "fraud-group",
+		Subscription:    "sub-1",
+	}
+	expected := "ATD-CTX-001|t1,t2|s1,s2|checkout|fraud|kafka|orders|fraud-group|sub-1"
+	if got := f.Fingerprint(); got != expected {
+		t.Fatalf("f.Fingerprint() = %q, want %q", got, expected)
+	}
+
+	// Test with empty slice fields
+	fEmpty := Finding{
+		RuleID:          "ATD-SEM-001",
+		ProducerService: "auth",
+	}
+	expectedEmpty := "ATD-SEM-001|||auth|||||"
+	if got := fEmpty.Fingerprint(); got != expectedEmpty {
+		t.Fatalf("fEmpty.Fingerprint() = %q, want %q", got, expectedEmpty)
+	}
+}
+
 func BenchmarkSortFindings(b *testing.B) {
 	template := make([]Finding, 1000)
 	for i := range template {

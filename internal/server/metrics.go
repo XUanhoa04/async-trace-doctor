@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
@@ -66,7 +65,7 @@ func (m *Metrics) Observe(r model.Report) {
 	for _, f := range r.Findings {
 		labelKey := f.RuleID + "\x00" + f.Severity
 		active[labelKey]++
-		fingerprint := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s", f.RuleID, strings.Join(f.TraceIDs, ","), strings.Join(f.SpanIDs, ","), f.ProducerService, f.ConsumerService, f.MessagingSystem, f.Destination, f.ConsumerGroup, f.Subscription)
+		fingerprint := f.Fingerprint()
 		currentFingerprints[fingerprint] = true
 		if !m.activeFingerprints[fingerprint] {
 			m.Violations.WithLabelValues(f.RuleID, f.Severity).Inc()
